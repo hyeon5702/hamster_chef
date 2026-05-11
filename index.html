@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>햄스터 셰프</title>
+    <link rel="stylesheet" href="./styles.css?v=admin-mode-20260511" />
+  </head>
+  <body>
+    <main id="game-root">
+      <canvas id="world"></canvas>
+
+      <section id="start-screen" class="screen screen-visible" aria-label="시작 화면">
+        <div class="brand-lockup">
+          <p class="eyebrow">tiny bistro adventure</p>
+          <h1>햄스터 셰프</h1>
+          <p class="start-copy">
+            작은 식당의 요리사 햄스터가 되어 노동으로 코인을 벌고, 재료를 골라
+            별점 요리에 도전하세요.
+          </p>
+          <div class="start-actions">
+            <button id="start-button" class="primary-action" type="button">새 게임</button>
+            <button id="continue-button" class="primary-action secondary-action hidden" type="button">이어하기</button>
+            <button id="history-button" class="primary-action secondary-action" type="button">영업 기록</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="hud" class="hud hidden" aria-label="게임 상태">
+        <div class="hud-left">
+          <div class="hud-title">햄스터 셰프</div>
+          <div id="objective" class="objective">목표 레시피는 새 게임 시작 시 정해집니다.</div>
+        </div>
+        <div class="hud-stats">
+          <div class="stat"><span>코인</span><strong id="coin-count">0</strong></div>
+          <div class="stat"><span>평판</span><strong id="reputation-count">0</strong></div>
+          <div class="stat"><span>시간</span><strong id="timer">08:00</strong></div>
+          <button id="recipe-note-button" class="icon-button" type="button" title="레시피 노트" aria-label="레시피 노트">▤</button>
+          <button id="sound-toggle" class="icon-button" type="button" title="소리 전환" aria-label="소리 전환">♪</button>
+        </div>
+      </section>
+
+      <aside id="quest-tracker" class="quest-tracker hidden" aria-label="진행 중인 일">
+        <span class="tracker-label">현재 일</span>
+        <strong id="quest-title">없음</strong>
+        <p id="quest-detail">게시판에서 일을 골라보세요.</p>
+      </aside>
+
+      <aside id="inventory-bar" class="inventory-bar hidden" aria-label="재료 가방"></aside>
+
+      <div id="interaction-prompt" class="interaction-prompt hidden">
+        <span id="interaction-name">상호작용</span>
+        <button id="interaction-button" type="button">확인</button>
+      </div>
+
+      <section id="modal" class="modal hidden" aria-live="polite" aria-label="게임 메뉴">
+        <div class="modal-panel">
+          <button id="close-modal" class="close-button" type="button" title="닫기">×</button>
+          <div id="modal-content"></div>
+        </div>
+      </section>
+
+      <section id="result-screen" class="screen hidden" aria-label="결과 화면">
+        <div class="result-lockup">
+          <p id="result-kicker" class="eyebrow">service complete</p>
+          <h2 id="result-title">결과</h2>
+          <p id="result-copy"></p>
+          <button id="restart-button" class="primary-action" type="button">다시 시작</button>
+        </div>
+      </section>
+
+      <div id="toast" class="toast hidden" role="status"></div>
+    </main>
+
+    <script type="module" src="./src/main.js?v=admin-mode-20260511"></script>
+  </body>
+</html>
