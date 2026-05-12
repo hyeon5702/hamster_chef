@@ -14,6 +14,8 @@ python3 -m http.server 5173
 
 시작 화면의 `튜토리얼 플레이` 버튼에서 안내창을 따라 첫 영업 흐름을 직접 플레이할 수 있습니다.
 
+회원가입/로그인과 DB 저장을 사용하려면 `src/supabase-config.js`에 Supabase URL과 anon key를 입력하고, `supabase/schema.sql`을 SQL Editor에서 실행해야 합니다. Dashboard URL을 넣어도 코드가 프로젝트 API URL로 자동 변환합니다.
+
 ## 조작
 
 - 이동: `WASD` 또는 방향키
@@ -54,7 +56,7 @@ python3 -m http.server 5173
 - 오늘의 이벤트
 - 이벤트별 월드 분위기 변화
 - 알바 햄스터 자동 보상
-- 브라우저 로컬 저장과 이어하기
+- 회원가입/로그인 기반 이어하기
 - 영업 기록표
 - 플레이형 튜토리얼 모드
 - 테스트용 관리자모드
@@ -107,17 +109,15 @@ python3 -m http.server 5173
 - 레시피 연구: 레시피 노트 힌트 강화
 - 알바 햄스터: 주기적으로 코인과 평판 획득
 
-## 저장
+## 계정과 저장
 
-저장은 브라우저 `localStorage`를 사용합니다.
+회원가입/로그인:
 
-저장 키:
+- 이메일 + 비밀번호 방식
+- 로그인 후 저장 데이터가 계정에 연결됩니다.
+- 기존 `localStorage` 데이터가 있으면 첫 로그인 시 1회 이전을 시도합니다.
 
-```text
-hamster-chef-save-v1
-```
-
-저장되는 데이터:
+DB 저장 데이터:
 
 - 코인
 - 보유 재료
@@ -127,8 +127,12 @@ hamster-chef-save-v1
 - 영업 기록
 - 현재 날짜
 - 진행 중인 영업일 일부 상태
+- 소리 설정
 
-같은 브라우저와 같은 주소에서만 이어하기가 가능합니다. 브라우저 사이트 데이터를 삭제하면 저장도 사라집니다.
+로컬 저장:
+
+- 인증 전 기본 설정값 유지
+- 기존 세이브 마이그레이션 백업
 
 ## 관리자모드
 
@@ -164,8 +168,11 @@ Ctrl + Shift + A
 .
 ├── index.html
 ├── styles.css
+├── supabase/
+│   └── schema.sql
 ├── src/
-│   └── main.js
+│   ├── main.js
+│   └── supabase-config.js
 ├── package.json
 └── README.md
 ```

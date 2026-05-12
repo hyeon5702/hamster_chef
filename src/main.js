@@ -1,4 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.164.1/build/three.module.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
 
 const dom = {
   canvas: document.querySelector("#world"),
@@ -7,6 +9,18 @@ const dom = {
   continueButton: document.querySelector("#continue-button"),
   tutorialButton: document.querySelector("#tutorial-button"),
   historyButton: document.querySelector("#history-button"),
+  authPanel: document.querySelector("#auth-panel"),
+  authStatus: document.querySelector("#auth-status"),
+  authBanner: document.querySelector("#auth-banner"),
+  authForm: document.querySelector("#auth-form"),
+  authNicknameField: document.querySelector("#auth-nickname-field"),
+  authNickname: document.querySelector("#auth-nickname"),
+  authEmail: document.querySelector("#auth-email"),
+  authPassword: document.querySelector("#auth-password"),
+  authSubmitButton: document.querySelector("#auth-submit-button"),
+  authSwitchButton: document.querySelector("#auth-switch-button"),
+  logoutButton: document.querySelector("#logout-button"),
+  startActions: document.querySelector("#start-actions"),
   hud: document.querySelector("#hud"),
   objective: document.querySelector("#objective"),
   coinCount: document.querySelector("#coin-count"),
@@ -112,6 +126,7 @@ const DAY_ORDER_COUNT = 3;
 const ORDER_SCORE_STEPS = [75, 80, 85, 90];
 const ORDER_COMPLETION_REWARD = 18;
 const SAVE_KEY = "hamster-chef-save-v1";
+const MIGRATION_KEY_PREFIX = "hamster-chef-migrated-";
 const ADMIN_CODE = "hamster";
 const BASE_STORAGE_LIMIT = 8;
 const REPUTATION_UNLOCKS = {
@@ -125,6 +140,7 @@ const ORDER_DISHES = ["별빛 크림 스튜", "숲속 버섯 플레이트", "당
 const ORDER_REQUESTS = ["매운맛 제외", "신선한 향 강조", "부드럽게 조리", "고소함 많이", "소스 따로", "치즈 추가"];
 const DEFAULT_MUSIC_VOLUME = 0.6;
 const DEFAULT_EFFECTS_VOLUME = 0.85;
+const BGM_AUDIO_PATH = "./assets/audio/hamster-chef-bgm.mp3";
 
 const CUSTOMER_PREFERENCES = [
   { name: "부드러운 맛 선호", description: "부드러움이 충분하면 +5점", trait: "creamy", threshold: 28, bonus: 5 },
@@ -225,6 +241,7 @@ const state = {
   gameOver: false,
   paused: false,
   modalOpen: false,
+  modalStopsMusic: false,
   modalReturn: null,
   coins: 12,
   timeLeft: GAME_SECONDS,
@@ -256,6 +273,14 @@ const state = {
   tutorialStep: 0,
   tutorialStartPosition: null,
   tutorialLastRenderedStep: -1,
+  authUser: null,
+  authReady: false,
+  authBusy: false,
+  profileNickname: "",
+  remoteProgress: null,
+  authMode: "login",
+  authMessage: "",
+  authBannerType: "warning",
 };
 
 const keys = new Set();
@@ -274,8 +299,9 @@ let playerCarryMesh;
 let helperHamster;
 let currentInteractable = null;
 let audioCtx;
-let musicTimer;
+let bgmAudio;
 let toastTimer;
+let supabase;
 
 init();
 
@@ -286,8 +312,80 @@ function init() {
   setupInput();
   syncSoundToggle();
   refreshStartActions();
+  void initAuth();
   updateHud();
   animate();
+}
+
+function normalizeSupabaseUrl(value) {
+  const raw = (value || "").trim();
+  if (!raw || raw.startsWith("YOUR_")) return "";
+
+  const dashboardMatch = raw.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (dashboardMatch?.[1]) {
+    return `https://${dashboardMatch[1]}.supabase.co`;
+  }
+
+  return raw.replace(/\/+$/, "");
+}
+
+function isSupabaseConfigured() {
+  return Boolean(normalizeSupabaseUrl(SUPABASE_URL)) && !SUPABASE_ANON_KEY.startsWith("YOUR_");
+}
+
+function getSupabase() {
+  if (!isSupabaseConfigured()) return null;
+  if (!supabase) {
+    supabase = createClient(normalizeSupabaseUrl(SUPABASE_URL), SUPABASE_ANON_KEY);
+  }
+  return supabase;
+}
+
+async function initAuth() {
+  syncAuthUi();
+  const client = getSupabase();
+  if (!client) {
+    state.authReady = true;
+    syncAuthUi("Supabase URL과 anon key를 `src/supabase-config.js`에 입력하면 회원가입과 DB 저장이 켜집니다.");
+    refreshStartActions();
+    return;
+  }
+
+  try {
+    const { data } = await client.auth.getSession();
+    await applySession(data.session);
+    client.auth.onAuthStateChange((_event, session) => {
+      void applySession(session);
+    });
+  } catch (error) {
+    console.error(error);
+    syncAuthUi("인증 초기화에 실패했습니다. Supabase 설정과 네트워크를 확인해주세요.");
+  } finally {
+    state.authReady = true;
+    syncAuthUi();
+    refreshStartActions();
+  }
+}
+
+async function applySession(session) {
+  state.authUser = session?.user || null;
+  if (!state.authUser) {
+    state.profileNickname = "";
+    state.remoteProgress = null;
+    state.history = [];
+    state.savedActiveDay = null;
+    state.authMode = "login";
+    refreshStartActions();
+    syncAuthUi();
+    return;
+  }
+
+  await ensureProfile();
+  await hydrateRemoteState();
+  await migrateLegacyDataIfNeeded();
+  await hydrateRemoteState();
+  refreshStartActions();
+  syncAuthUi();
 }
 
 function setupScene() {
@@ -552,6 +650,9 @@ function setupInput() {
   dom.continueButton.addEventListener("click", continueGame);
   dom.tutorialButton.addEventListener("click", startTutorialGame);
   dom.historyButton.addEventListener("click", openHistoryModal);
+  dom.authSubmitButton.addEventListener("click", () => void handleAuthSubmit());
+  dom.authSwitchButton.addEventListener("click", handleAuthSwitch);
+  dom.logoutButton.addEventListener("click", () => void handleLogout());
   dom.restartButton.addEventListener("click", () => {
     if (state.tutorialMode) {
       endTutorialMode("튜토리얼을 마쳤습니다. 이제 새 게임으로 시작해보세요.");
@@ -614,12 +715,195 @@ function setupInput() {
   });
 }
 
-function getSavedProgress() {
+function getDefaultAuthMessage(configured, loggedIn, nickname) {
+  if (!configured) {
+    return "Supabase URL과 anon key를 설정하면 회원가입과 DB 저장이 활성화됩니다.";
+  }
+  if (loggedIn) {
+    return `${nickname} 계정으로 저장이 연결되었습니다.`;
+  }
+  if (state.authMode === "signup") {
+    return "새 계정을 만들면 저장 데이터가 이 계정에 연결됩니다.";
+  }
+  return "로그인하면 저장 데이터가 계정에 연결됩니다.";
+}
+
+function mapAuthErrorMessage(message = "") {
+  const normalized = String(message).toLowerCase();
+  if (!normalized) return "인증 중 오류가 발생했습니다.";
+  if (normalized.includes("invalid login credentials")) return "이메일 또는 비밀번호가 올바르지 않습니다.";
+  if (normalized.includes("email not confirmed")) return "이메일 인증이 아직 완료되지 않았습니다. 받은 편지함에서 인증 메일을 먼저 확인해주세요.";
+  if (normalized.includes("user already registered")) return "이미 가입된 이메일입니다. 로그인으로 진행해주세요.";
+  if (normalized.includes("password should be at least")) return "비밀번호는 8자 이상이어야 합니다.";
+  if (normalized.includes("invalid email")) return "이메일 형식이 올바르지 않습니다.";
+  if (normalized.includes("signup is disabled")) return "현재 회원가입이 비활성화되어 있습니다. Supabase 인증 설정을 확인해주세요.";
+  if (normalized.includes("email rate limit exceeded")) return "인증 메일 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.";
+  return message;
+}
+
+function setAuthMessage(message = "", type = "warning") {
+  state.authMessage = message;
+  state.authBannerType = type;
+}
+
+function setAuthMode(mode, message = "") {
+  state.authMode = mode;
+  setAuthMessage(message, mode === "signup" ? "warning" : "warning");
+  syncAuthUi();
+}
+
+function syncAuthUi(message) {
+  if (typeof message === "string") setAuthMessage(message);
+  const configured = isSupabaseConfigured();
+  const loggedIn = Boolean(state.authUser);
+  const nickname = state.profileNickname || state.authUser?.user_metadata?.nickname || "햄스터 셰프";
+  const authMessage = state.authMessage || getDefaultAuthMessage(configured, loggedIn, nickname);
+
+  dom.authStatus.textContent = configured
+    ? (loggedIn ? `${nickname} 님 환영합니다` : state.authMode === "signup" ? "회원가입" : "로그인")
+    : "Supabase 연결 필요";
+  dom.authBanner.textContent = authMessage;
+  dom.authBanner.className = `auth-banner auth-banner-${state.authBannerType}`;
+  dom.authBanner.classList.toggle("hidden", !authMessage);
+  dom.authForm.classList.toggle("hidden", loggedIn || !configured);
+  dom.logoutButton.classList.toggle("hidden", !loggedIn);
+  dom.startActions.classList.toggle("hidden", !loggedIn);
+  dom.authNicknameField.classList.toggle("hidden", state.authMode !== "signup");
+  dom.authSubmitButton.textContent = state.authMode === "signup" ? "회원가입" : "로그인";
+  dom.authSwitchButton.textContent = state.authMode === "signup" ? "로그인으로 돌아가기" : "회원가입하기";
+
+  const disabled = state.authBusy || !configured;
+  dom.authNickname.disabled = disabled;
+  dom.authEmail.disabled = disabled;
+  dom.authPassword.disabled = disabled;
+  dom.authSubmitButton.disabled = disabled;
+  dom.authSwitchButton.disabled = state.authBusy;
+  dom.logoutButton.disabled = state.authBusy;
+}
+
+function setAuthBusy(busy) {
+  state.authBusy = busy;
+  syncAuthUi();
+}
+
+function handleAuthSwitch() {
+  if (state.authMode === "signup") {
+    setAuthMode("login");
+    return;
+  }
+  setAuthMode("signup");
+}
+
+async function handleAuthSubmit() {
+  if (state.authMode === "signup") {
+    await handleSignup();
+    return;
+  }
+  await handleLogin();
+}
+
+async function handleSignup() {
+  const client = getSupabase();
+  if (!client) {
+    syncAuthUi("먼저 `src/supabase-config.js`에 Supabase 값을 입력해주세요.");
+    return;
+  }
+
+  const email = dom.authEmail.value.trim();
+  const password = dom.authPassword.value;
+  const nickname = dom.authNickname.value.trim() || "햄스터 셰프";
+  if (!email || password.length < 8) {
+    setAuthMessage("회원가입하려면 이메일과 8자 이상의 비밀번호가 필요합니다. 가입 후에는 이메일 인증을 마친 뒤 로그인해야 합니다.", "warning");
+    syncAuthUi();
+    return;
+  }
+
+  setAuthBusy(true);
+  try {
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { nickname },
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+
+    if (data.session) {
+      setAuthMessage("회원가입과 로그인이 완료되었습니다.", "success");
+      showToast("회원가입과 로그인이 완료되었습니다.");
+    } else {
+      setAuthMode("login", "회원가입이 완료되었습니다. 이메일 인증 메일을 확인하고, 인증을 끝낸 뒤 로그인해주세요.");
+    }
+  } catch (error) {
+    console.error(error);
+    setAuthMessage(mapAuthErrorMessage(error.message || "회원가입 중 오류가 발생했습니다."), "error");
+    syncAuthUi();
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function handleLogin() {
+  const client = getSupabase();
+  if (!client) {
+    syncAuthUi("먼저 `src/supabase-config.js`에 Supabase 값을 입력해주세요.");
+    return;
+  }
+
+  const email = dom.authEmail.value.trim();
+  const password = dom.authPassword.value;
+  if (!email || !password) {
+    setAuthMessage("이메일과 비밀번호를 입력해주세요.", "warning");
+    syncAuthUi();
+    return;
+  }
+
+  setAuthBusy(true);
+  try {
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    setAuthMessage("로그인되었습니다.", "success");
+    showToast("로그인되었습니다.");
+  } catch (error) {
+    console.error(error);
+    setAuthMessage(mapAuthErrorMessage(error.message || "로그인 중 오류가 발생했습니다."), "error");
+    syncAuthUi();
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function handleLogout() {
+  const client = getSupabase();
+  if (!client) return;
+  setAuthBusy(true);
+  try {
+    const { error } = await client.auth.signOut();
+    if (error) throw error;
+    setAuthMode("login", "로그아웃되었습니다.");
+    state.authBannerType = "success";
+    showToast("로그아웃되었습니다.");
+  } catch (error) {
+    console.error(error);
+    setAuthMessage(mapAuthErrorMessage(error.message || "로그아웃 중 오류가 발생했습니다."), "error");
+    syncAuthUi();
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function getLocalProgress() {
   try {
     return JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
   } catch {
     return null;
   }
+}
+
+function getSavedProgress() {
+  return state.authUser ? state.remoteProgress : getLocalProgress();
 }
 
 function hasPlayableProgress(data) {
@@ -642,12 +926,17 @@ function persistSettings() {
     musicVolume: state.musicVolume,
     effectsVolume: state.effectsVolume,
   };
-  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  if (state.authUser) {
+    state.remoteProgress = { ...(state.remoteProgress || {}), ...data };
+    void saveRemoteSettings();
+  } else {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  }
   refreshStartActions();
 }
 
 function loadSettings() {
-  const data = getSavedProgress();
+  const data = getLocalProgress();
   if (!data) return;
   state.soundEnabled = data.soundEnabled ?? true;
   state.musicVolume = clampVolume(data.musicVolume, DEFAULT_MUSIC_VOLUME);
@@ -685,7 +974,12 @@ function saveProgress() {
         }
       : null,
   };
-  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  if (state.authUser) {
+    state.remoteProgress = { ...data, history: state.history };
+    void saveRemoteProgress(data);
+  } else {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  }
   refreshStartActions();
 }
 
@@ -707,9 +1001,178 @@ function loadProgress() {
   return true;
 }
 
+async function ensureProfile() {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+
+  const fallbackNickname = state.authUser.user_metadata?.nickname || "햄스터 셰프";
+  await client.from("profiles").upsert({
+    id: state.authUser.id,
+    nickname: fallbackNickname,
+    updated_at: new Date().toISOString(),
+  });
+  state.profileNickname = fallbackNickname;
+}
+
+async function hydrateRemoteState() {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+
+  const userId = state.authUser.id;
+  const [profileRes, settingsRes, saveRes, historyRes] = await Promise.all([
+    client.from("profiles").select("nickname").eq("id", userId).maybeSingle(),
+    client.from("game_settings").select("*").eq("user_id", userId).maybeSingle(),
+    client.from("game_saves").select("*").eq("user_id", userId).maybeSingle(),
+    client.from("service_history").select("*").eq("user_id", userId).order("day", { ascending: true }),
+  ]);
+
+  if (profileRes.data?.nickname) state.profileNickname = profileRes.data.nickname;
+
+  if (settingsRes.data) {
+    state.soundEnabled = settingsRes.data.sound_enabled ?? state.soundEnabled;
+    state.musicVolume = clampVolume(settingsRes.data.music_volume, state.musicVolume);
+    state.effectsVolume = clampVolume(settingsRes.data.effects_volume, state.effectsVolume);
+    syncSoundToggle();
+    syncMusicVolume();
+  }
+
+  state.history = (historyRes.data || []).map((entry) => ({
+    day: entry.day,
+    won: entry.won,
+    event: entry.event,
+    completed: entry.completed,
+    total: entry.total,
+    bestScore: entry.best_score,
+    coins: entry.coins,
+    reputation: entry.reputation,
+    dishes: entry.dishes || [],
+  }));
+
+  state.remoteProgress = saveRes.data
+    ? {
+        coins: saveRes.data.coins,
+        inventory: saveRes.data.inventory || {},
+        recipeRecords: saveRes.data.recipe_records || {},
+        reputation: saveRes.data.reputation,
+        upgrades: saveRes.data.upgrades || {},
+        history: state.history,
+        day: saveRes.data.day || 0,
+        soundEnabled: state.soundEnabled,
+        musicVolume: state.musicVolume,
+        effectsVolume: state.effectsVolume,
+        activeDay: saveRes.data.active_day || null,
+      }
+    : {
+        day: state.history.at(-1)?.day || 0,
+        soundEnabled: state.soundEnabled,
+        musicVolume: state.musicVolume,
+        effectsVolume: state.effectsVolume,
+        history: state.history,
+      };
+}
+
+async function saveRemoteSettings() {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+  const { error } = await client.from("game_settings").upsert({
+    user_id: state.authUser.id,
+    sound_enabled: state.soundEnabled,
+    music_volume: state.musicVolume,
+    effects_volume: state.effectsVolume,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) console.error(error);
+}
+
+async function saveRemoteProgress(data) {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+  const { error } = await client.from("game_saves").upsert({
+    user_id: state.authUser.id,
+    day: data.day,
+    coins: data.coins,
+    reputation: data.reputation,
+    inventory: data.inventory,
+    recipe_records: data.recipeRecords,
+    upgrades: data.upgrades,
+    active_day: data.activeDay,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) console.error(error);
+}
+
+async function saveHistoryEntry(entry) {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+  const { error } = await client.from("service_history").upsert({
+    user_id: state.authUser.id,
+    day: entry.day,
+    won: entry.won,
+    event: entry.event,
+    completed: entry.completed,
+    total: entry.total,
+    best_score: entry.bestScore,
+    coins: entry.coins,
+    reputation: entry.reputation,
+    dishes: entry.dishes,
+  }, { onConflict: "user_id,day" });
+  if (error) console.error(error);
+}
+
+async function clearRemoteData() {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+  await Promise.all([
+    client.from("game_saves").delete().eq("user_id", state.authUser.id),
+    client.from("game_settings").delete().eq("user_id", state.authUser.id),
+    client.from("service_history").delete().eq("user_id", state.authUser.id),
+  ]);
+  state.remoteProgress = null;
+  state.history = [];
+  refreshStartActions();
+}
+
+async function migrateLegacyDataIfNeeded() {
+  if (!state.authUser) return;
+  const markerKey = `${MIGRATION_KEY_PREFIX}${state.authUser.id}`;
+  if (localStorage.getItem(markerKey)) return;
+
+  const legacy = getLocalProgress();
+  if (!hasPlayableProgress(legacy) && !legacy?.soundEnabled) return;
+  if (hasPlayableProgress(state.remoteProgress) || state.history.length) {
+    localStorage.setItem(markerKey, "done");
+    return;
+  }
+
+  state.remoteProgress = {
+    ...(state.remoteProgress || {}),
+    ...legacy,
+    history: legacy?.history || [],
+  };
+
+  state.soundEnabled = legacy?.soundEnabled ?? state.soundEnabled;
+  state.musicVolume = clampVolume(legacy?.musicVolume, state.musicVolume);
+  state.effectsVolume = clampVolume(legacy?.effectsVolume, state.effectsVolume);
+  syncSoundToggle();
+  syncMusicVolume();
+
+  await saveRemoteSettings();
+  if (hasPlayableProgress(legacy)) await saveRemoteProgress(legacy);
+  for (const entry of legacy?.history || []) {
+    await saveHistoryEntry(entry);
+  }
+  localStorage.setItem(markerKey, "done");
+}
+
 function refreshStartActions() {
   if (!dom.continueButton) return;
-  dom.continueButton.classList.toggle("hidden", !hasPlayableProgress(getSavedProgress()));
+  const loggedIn = Boolean(state.authUser);
+  const canContinue = loggedIn && hasPlayableProgress(getSavedProgress());
+  dom.startButton.disabled = !loggedIn;
+  dom.historyButton.disabled = !loggedIn;
+  dom.continueButton.disabled = !loggedIn;
+  dom.continueButton.classList.toggle("hidden", !canContinue);
+  dom.startActions.classList.toggle("hidden", !loggedIn);
 }
 
 function openHistoryModal() {
@@ -768,8 +1231,7 @@ function openPauseMenu() {
       <h3>현재 목표</h3>
       <p>${state.orderQueue.length ? `${getOrderLabel()} 주문 ${getTargetRecipe().name} · 목표 ${getRequiredScore()}점 이상 · ${getCustomerPreference().name}` : "현재 진행 중인 주문이 없습니다."}</p>
     </article>
-  `, { returnTo: "resume-game" });
-
+  `, { returnTo: "resume-game", stopMusic: true });
   bindPauseMenuEvents();
 }
 
@@ -839,6 +1301,7 @@ function updateVolumeSetting(type, rawValue) {
     state.musicVolume = nextValue;
     const output = dom.modalContent.querySelector("#pause-music-volume");
     if (output) output.textContent = formatVolumePercent(nextValue);
+    syncMusicVolume();
   } else {
     state.effectsVolume = nextValue;
     const output = dom.modalContent.querySelector("#pause-effects-volume");
@@ -864,6 +1327,7 @@ function saveAndExitToStartScreen() {
   state.gameOver = false;
   state.paused = false;
   state.modalOpen = false;
+  state.modalStopsMusic = false;
   state.modalReturn = null;
   stopMusic();
   closeModal(false, true);
@@ -1108,6 +1572,7 @@ function handleAdminAction(action) {
   if (action === "clear-save") {
     localStorage.removeItem(SAVE_KEY);
     state.history = [];
+    if (state.authUser) void clearRemoteData();
     refreshStartActions();
     showToast("저장 데이터를 초기화했습니다.");
     openAdminPanel();
@@ -1162,6 +1627,10 @@ function createAdminPassingDish() {
 }
 
 function startGame() {
+  if (!state.authUser) {
+    syncAuthUi("새 게임을 시작하려면 먼저 회원가입 또는 로그인이 필요합니다.");
+    return;
+  }
   state.tutorialMode = false;
   state.coins = 12;
   state.inventory = {};
@@ -1241,6 +1710,7 @@ function endTutorialMode(message) {
   state.gameOver = false;
   state.paused = false;
   state.modalOpen = false;
+  state.modalStopsMusic = false;
   state.modalReturn = null;
   state.coins = 12;
   state.timeLeft = GAME_SECONDS;
@@ -1278,6 +1748,10 @@ function endTutorialMode(message) {
 }
 
 function continueGame() {
+  if (!state.authUser) {
+    syncAuthUi("이어하기를 사용하려면 로그인해주세요.");
+    return;
+  }
   state.tutorialMode = false;
   if (!loadProgress()) {
     showToast("이어할 기록이 없습니다.");
@@ -1341,6 +1815,7 @@ function restartGame() {
   state.gameOver = false;
   state.paused = false;
   state.modalOpen = false;
+  state.modalStopsMusic = false;
   state.modalReturn = null;
   state.coins = Math.max(12, state.coins);
   state.timeLeft = GAME_SECONDS;
@@ -3307,6 +3782,7 @@ function finishGame(won, copy) {
   state.gameOver = true;
   state.paused = false;
   state.modalOpen = false;
+  state.modalStopsMusic = false;
   closeModal(false, true);
   stopMusic();
 
@@ -3326,7 +3802,7 @@ function finishGame(won, copy) {
 function recordDayHistory(won) {
   if (!state.serviceStats || state.serviceStats.recorded) return;
   state.serviceStats.recorded = true;
-  state.history.push({
+  const entry = {
     day: state.day,
     won,
     event: state.dailyEvent?.name || "없음",
@@ -3336,8 +3812,10 @@ function recordDayHistory(won) {
     coins: state.serviceStats.coinsEarned,
     reputation: state.serviceStats.reputationEarned,
     dishes: state.serviceStats.dishes,
-  });
+  };
+  state.history.push(entry);
   state.history = state.history.slice(-20);
+  if (state.authUser) void saveHistoryEntry(entry);
 }
 
 function makeServiceSummary(won, reason = "") {
@@ -3364,9 +3842,11 @@ function makeServiceSummary(won, reason = "") {
 
 function openModal(html, options = {}) {
   state.modalOpen = true;
+  state.modalStopsMusic = Boolean(options.stopMusic);
   state.modalReturn = options.returnTo || null;
   dom.modalContent.innerHTML = html;
   dom.modal.classList.remove("hidden");
+  syncMusicPlayback();
 }
 
 function closeModal(play = true, force = false) {
@@ -3379,6 +3859,7 @@ function closeModal(play = true, force = false) {
   const returnTo = state.modalReturn;
   state.modalReturn = null;
   state.modalOpen = false;
+  state.modalStopsMusic = false;
   dom.modal.classList.add("hidden");
   if (play) playClick();
 
@@ -3391,6 +3872,7 @@ function closeModal(play = true, force = false) {
   } else if (!force && returnTo === "complete-order" && state.scoreboardConclusion) {
     finishPassedScoreboard();
   }
+  syncMusicPlayback();
 }
 
 function updateHud() {
@@ -3554,21 +4036,47 @@ function ensureAudio() {
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
+function ensureBgmAudio() {
+  if (!bgmAudio) {
+    bgmAudio = new Audio(BGM_AUDIO_PATH);
+    bgmAudio.loop = true;
+    bgmAudio.preload = "auto";
+  }
+  syncMusicVolume();
+}
+
 function startMusic() {
-  if (!state.soundEnabled || musicTimer || !audioCtx) return;
-  const notes = [261.63, 329.63, 392.0, 523.25, 392.0, 329.63];
-  let step = 0;
-  musicTimer = setInterval(() => {
-    if (!state.running || state.modalOpen || !state.soundEnabled) return;
-    playTone(notes[step % notes.length], 0.08, 0.045, "sine", "music");
-    if (step % 3 === 0) playTone(notes[(step + 2) % notes.length] / 2, 0.1, 0.028, "triangle", "music");
-    step += 1;
-  }, 620);
+  syncMusicPlayback();
 }
 
 function stopMusic() {
-  clearInterval(musicTimer);
-  musicTimer = undefined;
+  if (bgmAudio) bgmAudio.pause();
+}
+
+function syncMusicVolume() {
+  if (!bgmAudio) return;
+  bgmAudio.volume = state.soundEnabled ? state.musicVolume : 0;
+}
+
+function syncMusicPlayback() {
+  if (!state.soundEnabled) {
+    stopMusic();
+    return;
+  }
+
+  ensureBgmAudio();
+  if (!bgmAudio) return;
+
+  const shouldPlay = state.running && !state.gameOver && !state.paused && !state.modalStopsMusic;
+  if (!shouldPlay) {
+    bgmAudio.pause();
+    return;
+  }
+
+  const playAttempt = bgmAudio.play();
+  if (playAttempt?.catch) {
+    playAttempt.catch(() => {});
+  }
 }
 
 function playTone(freq, duration = 0.1, gain = 0.08, type = "sine", channel = "effects") {

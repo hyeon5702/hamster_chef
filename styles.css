@@ -127,6 +127,106 @@ button {
   gap: 10px;
 }
 
+.auth-panel {
+  width: min(560px, 100%);
+  margin: 0 0 22px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 8px;
+  color: var(--paper);
+  background: rgba(36, 31, 33, 0.18);
+  box-shadow: 0 18px 42px rgba(20, 18, 16, 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-header strong {
+  font-size: 22px;
+}
+
+.auth-banner {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  font-size: 17px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.auth-banner-success {
+  color: #f6fffb;
+  background: rgba(45, 166, 111, 0.34);
+}
+
+.auth-banner-warning {
+  color: #fffaf0;
+  background: rgba(245, 200, 75, 0.26);
+}
+
+.auth-banner-error {
+  color: #fff6f4;
+  background: rgba(239, 91, 79, 0.3);
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-field span {
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.auth-field input {
+  min-height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: rgba(255, 248, 232, 0.96);
+  font: inherit;
+}
+
+.auth-field input:disabled,
+.auth-actions button:disabled,
+.auth-logout:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.auth-logout {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: rgba(255, 248, 232, 0.96);
+  box-shadow: 0 8px 20px rgba(20, 18, 16, 0.14);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+}
+
 .secondary-action {
   color: var(--ink);
   background: var(--paper);
@@ -1378,6 +1478,11 @@ button {
   .hud-stats {
     max-width: none;
     width: 100%;
+  }
+
+  .auth-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .hud-stats {

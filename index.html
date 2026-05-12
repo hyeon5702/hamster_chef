@@ -19,7 +19,32 @@
             작은 식당의 요리사 햄스터가 되어 노동으로 코인을 벌고, 재료를 골라
             별점 요리에 도전하세요.
           </p>
-          <div class="start-actions">
+          <section id="auth-panel" class="auth-panel" aria-label="계정">
+            <div class="auth-header">
+              <strong id="auth-status">계정 확인 중...</strong>
+              <button id="logout-button" class="auth-logout hidden" type="button">로그아웃</button>
+            </div>
+            <div id="auth-banner" class="auth-banner hidden" role="status"></div>
+            <div id="auth-form" class="auth-form">
+              <label id="auth-nickname-field" class="auth-field hidden">
+                <span>닉네임</span>
+                <input id="auth-nickname" type="text" maxlength="16" placeholder="햄스터 셰프" />
+              </label>
+              <label class="auth-field">
+                <span>이메일</span>
+                <input id="auth-email" type="email" autocomplete="email" placeholder="chef@example.com" />
+              </label>
+              <label class="auth-field">
+                <span>비밀번호</span>
+                <input id="auth-password" type="password" autocomplete="current-password" placeholder="8자 이상" />
+              </label>
+              <div class="auth-actions">
+                <button id="auth-submit-button" class="primary-action" type="button">로그인</button>
+                <button id="auth-switch-button" class="primary-action secondary-action" type="button">회원가입하기</button>
+              </div>
+            </div>
+          </section>
+          <div id="start-actions" class="start-actions hidden">
             <button id="start-button" class="primary-action" type="button">새 게임</button>
             <button id="continue-button" class="primary-action secondary-action hidden" type="button">이어하기</button>
             <button id="tutorial-button" class="primary-action secondary-action" type="button">튜토리얼 플레이</button>
