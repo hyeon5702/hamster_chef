@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <title>햄스터 셰프</title>
-    <link rel="stylesheet" href="./styles.css?v=admin-mode-20260511" />
+    <link rel="stylesheet" href="./styles.css?v=guided-tutorial-20260512" />
   </head>
   <body>
     <main id="game-root">
@@ -22,6 +22,7 @@
           <div class="start-actions">
             <button id="start-button" class="primary-action" type="button">새 게임</button>
             <button id="continue-button" class="primary-action secondary-action hidden" type="button">이어하기</button>
+            <button id="tutorial-button" class="primary-action secondary-action" type="button">튜토리얼 플레이</button>
             <button id="history-button" class="primary-action secondary-action" type="button">영업 기록</button>
           </div>
         </div>
@@ -49,6 +50,13 @@
 
       <aside id="inventory-bar" class="inventory-bar hidden" aria-label="재료 가방"></aside>
 
+      <aside id="tutorial-guide" class="tutorial-guide hidden" aria-live="polite" aria-label="튜토리얼 안내">
+        <span id="tutorial-step-label">튜토리얼</span>
+        <h2 id="tutorial-title">시작</h2>
+        <p id="tutorial-copy">햄스터 셰프의 첫 영업을 따라 해보세요.</p>
+        <button id="tutorial-exit" type="button">튜토리얼 종료</button>
+      </aside>
+
       <div id="interaction-prompt" class="interaction-prompt hidden">
         <span id="interaction-name">상호작용</span>
         <button id="interaction-button" type="button">확인</button>
@@ -73,6 +81,6 @@
       <div id="toast" class="toast hidden" role="status"></div>
     </main>
 
-    <script type="module" src="./src/main.js?v=admin-mode-20260511"></script>
+    <script type="module" src="./src/main.js?v=guided-tutorial-20260512"></script>
   </body>
 </html>

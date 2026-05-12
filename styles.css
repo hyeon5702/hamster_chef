@@ -261,6 +261,55 @@ button {
   line-height: 1.5;
 }
 
+.tutorial-guide {
+  position: absolute;
+  z-index: 12;
+  top: 128px;
+  right: 18px;
+  width: min(390px, calc(100vw - 36px));
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 248, 232, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.tutorial-guide span {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--teal);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.tutorial-guide h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.tutorial-guide p {
+  margin: 8px 0 14px;
+  color: rgba(36, 31, 33, 0.76);
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+.tutorial-guide button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #fffdf5;
+  background: var(--teal);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+}
+
 .inventory-bar {
   position: absolute;
   z-index: 10;
@@ -1311,6 +1360,13 @@ button {
   .quest-tracker {
     left: 10px;
     bottom: 88px;
+    width: calc(100vw - 20px);
+  }
+
+  .tutorial-guide {
+    top: auto;
+    right: 10px;
+    bottom: 246px;
     width: calc(100vw - 20px);
   }
 

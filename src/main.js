@@ -5,6 +5,7 @@ const dom = {
   startScreen: document.querySelector("#start-screen"),
   startButton: document.querySelector("#start-button"),
   continueButton: document.querySelector("#continue-button"),
+  tutorialButton: document.querySelector("#tutorial-button"),
   historyButton: document.querySelector("#history-button"),
   hud: document.querySelector("#hud"),
   objective: document.querySelector("#objective"),
@@ -17,6 +18,11 @@ const dom = {
   questTitle: document.querySelector("#quest-title"),
   questDetail: document.querySelector("#quest-detail"),
   inventoryBar: document.querySelector("#inventory-bar"),
+  tutorialGuide: document.querySelector("#tutorial-guide"),
+  tutorialStepLabel: document.querySelector("#tutorial-step-label"),
+  tutorialTitle: document.querySelector("#tutorial-title"),
+  tutorialCopy: document.querySelector("#tutorial-copy"),
+  tutorialExit: document.querySelector("#tutorial-exit"),
   interactionPrompt: document.querySelector("#interaction-prompt"),
   interactionName: document.querySelector("#interaction-name"),
   interactionButton: document.querySelector("#interaction-button"),
@@ -193,16 +199,16 @@ const RECIPES = [
 
 const QUESTS = [
   {
-    id: "dishwash",
-    name: "반짝 접시 정리",
-    pay: 20,
-    summary: "싱크대에서 접시 5장을 닦습니다.",
-  },
-  {
     id: "errand",
     name: "주문표 전달",
-    pay: 25,
+    pay: 20,
     summary: "게시판의 주문표를 주방 카운터에 전달합니다.",
+  },
+  {
+    id: "dishwash",
+    name: "반짝 접시 정리",
+    pay: 25,
+    summary: "싱크대에서 접시 5장을 닦습니다.",
   },
   {
     id: "stock",
@@ -241,6 +247,10 @@ const state = {
   scoreboardConclusion: null,
   orderTimer: null,
   soundEnabled: true,
+  tutorialMode: false,
+  tutorialStep: 0,
+  tutorialStartPosition: null,
+  tutorialLastRenderedStep: -1,
 };
 
 const keys = new Set();
@@ -533,12 +543,20 @@ function createHelperHamster() {
 function setupInput() {
   dom.startButton.addEventListener("click", startGame);
   dom.continueButton.addEventListener("click", continueGame);
+  dom.tutorialButton.addEventListener("click", startTutorialGame);
   dom.historyButton.addEventListener("click", openHistoryModal);
-  dom.restartButton.addEventListener("click", restartGame);
+  dom.restartButton.addEventListener("click", () => {
+    if (state.tutorialMode) {
+      endTutorialMode("튜토리얼을 마쳤습니다. 이제 새 게임으로 시작해보세요.");
+    } else {
+      restartGame();
+    }
+  });
   dom.closeModal.addEventListener("click", closeModal);
   dom.interactionButton.addEventListener("click", interact);
   dom.recipeNoteButton.addEventListener("click", openRecipeNote);
   dom.soundToggle.addEventListener("click", toggleSound);
+  dom.tutorialExit.addEventListener("click", () => endTutorialMode("튜토리얼을 종료했습니다."));
 
   window.addEventListener("keydown", (event) => {
     if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
@@ -591,6 +609,11 @@ function getSavedProgress() {
 }
 
 function saveProgress() {
+  if (state.tutorialMode) {
+    refreshStartActions();
+    return;
+  }
+
   const data = {
     coins: state.coins,
     inventory: state.inventory,
@@ -661,6 +684,129 @@ function openHistoryModal() {
     <p>최근 영업일의 이벤트, 완료 주문, 평판 성장을 확인합니다.</p>
     <div class="scoreboard-list">${rows}</div>
   `);
+}
+
+function updateTutorialGuide() {
+  if (!state.tutorialMode || !player) return;
+  if (!state.tutorialStartPosition) state.tutorialStartPosition = player.position.clone();
+
+  if (state.tutorialStep === 0 && player.position.distanceTo(state.tutorialStartPosition) > 1.1) {
+    setTutorialStep(1);
+  }
+
+  if (state.tutorialStep === 1 && state.currentQuest) {
+    setTutorialStep(2);
+  }
+
+  if (state.tutorialStep === 2 && !state.currentQuest && state.coins >= 50) {
+    setTutorialStep(3);
+  }
+
+  if (state.tutorialStep === 3 && getInventoryCount() >= 3) {
+    setTutorialStep(4);
+  }
+
+  if (state.tutorialStep === 4 && state.pendingDish) {
+    setTutorialStep(5);
+  }
+
+  if (state.tutorialStep === 5 && state.lastJudgement) {
+    setTutorialStep(6);
+  }
+
+  renderTutorialGuide();
+}
+
+function setTutorialStep(step) {
+  state.tutorialStep = Math.max(state.tutorialStep, step);
+  state.tutorialLastRenderedStep = -1;
+}
+
+function renderTutorialGuide(force = false) {
+  if (!state.tutorialMode) return;
+  if (!force && state.tutorialLastRenderedStep === state.tutorialStep) return;
+
+  const step = getTutorialStepContent();
+  dom.tutorialStepLabel.textContent = `튜토리얼 ${Math.min(state.tutorialStep + 1, 7)}/7`;
+  dom.tutorialTitle.textContent = step.title;
+  dom.tutorialCopy.innerHTML = step.copy;
+  dom.tutorialExit.textContent = step.done ? "시작 화면으로" : "튜토리얼 종료";
+  dom.tutorialGuide.classList.remove("hidden");
+  state.tutorialLastRenderedStep = state.tutorialStep;
+}
+
+function getTutorialStepContent() {
+  const recipe = getTargetRecipe();
+  const suggestion = getTutorialIngredientSuggestion(recipe);
+
+  if (state.tutorialStep === 0) {
+    return {
+      title: "먼저 움직여보기",
+      copy: "<strong>WASD</strong> 또는 <strong>방향키</strong>로 햄스터를 움직여보세요. <strong>Shift</strong>를 누르면 더 빠르게 달립니다.",
+    };
+  }
+
+  if (state.tutorialStep === 1) {
+    return {
+      title: "일 게시판에서 코인 벌기",
+      copy: "왼쪽 뒤편의 <strong>일 게시판</strong>으로 가서 <strong>E</strong> 또는 <strong>Enter</strong>를 누르세요. 처음에는 <strong>반짝 접시 정리</strong>를 추천합니다.",
+    };
+  }
+
+  if (state.tutorialStep === 2) {
+    return {
+      title: `${state.currentQuest?.name || "일"} 진행하기`,
+      copy: getTutorialQuestCopy(),
+    };
+  }
+
+  if (state.tutorialStep === 3) {
+    return {
+      title: "재료 상점에서 장보기",
+      copy: `오른쪽 뒤편의 <strong>재료 상점</strong>에서 목표 요리 재료를 사세요. 이번 목표는 <strong>${recipe.name}</strong>이고 추천 조합은 <strong>${suggestion}</strong>입니다.`,
+    };
+  }
+
+  if (state.tutorialStep === 4) {
+    return {
+      title: "조리대에서 요리하기",
+      copy: "중앙 오른쪽의 <strong>조리대</strong>로 가서 재료 3개를 넣고 요리하세요. 미니게임은 화면 지시에 맞춰 <strong>Space</strong>, <strong>Enter</strong>, 클릭을 사용합니다.",
+    };
+  }
+
+  if (state.tutorialStep === 5) {
+    return {
+      title: "평가 테이블로 가져가기",
+      copy: "아래쪽의 <strong>평가 테이블</strong>로 가서 완성한 요리를 제출하세요. 재료 점수와 미니게임 점수가 합쳐져 최종 점수가 나옵니다.",
+    };
+  }
+
+  return {
+    title: "튜토리얼 완료",
+    copy: "좋아요. 코인 벌기, 재료 구매, 요리, 평가까지 한 번 돌아봤습니다. 이제 일반 새 게임에서 영업을 이어갈 준비가 됐습니다.",
+    done: true,
+  };
+}
+
+function getTutorialQuestCopy() {
+  const quest = state.currentQuest;
+  if (!quest) return "일을 완료하면 재료를 살 코인이 충분해집니다.";
+  if (quest.id === "dishwash") {
+    return "왼쪽의 <strong>싱크대</strong>로 가세요. 더러운 접시를 중앙으로 드래그하고, 수세미로 문질러 깨끗하게 만든 뒤 오른쪽 칸에 놓으면 됩니다.";
+  }
+  if (quest.id === "errand") {
+    return "왼쪽 중앙의 <strong>주방 카운터</strong>로 가세요. 주문표의 테이블 번호, 요리 이름, 요청 문구를 외운 뒤 같은 주문표를 고르면 됩니다.";
+  }
+  if (quest.id === "stock") {
+    return "바닥의 <strong>재료 상자</strong>를 찾아 들고, 오른쪽의 <strong>재료 선반</strong>에 올려두세요. 상자 3개를 정리하면 완료됩니다.";
+  }
+  return "화면 아래 현재 일 안내를 보면서 일을 완료해보세요.";
+}
+
+function getTutorialIngredientSuggestion(recipe) {
+  if (recipe.id === "forest-mushroom") return "밤송이 버섯 + 도토리 치즈 + 초록 허브";
+  if (recipe.id === "carrot-cream") return "꼬마 당근 + 꼬마 당근 + 구름 크림";
+  return "도토리 치즈 + 구름 크림 + 초록 허브";
 }
 
 function openAdminPanel() {
@@ -823,6 +969,7 @@ function createAdminPassingDish() {
 }
 
 function startGame() {
+  state.tutorialMode = false;
   state.coins = 12;
   state.inventory = {};
   state.recipeRecords = {};
@@ -836,7 +983,108 @@ function startGame() {
   showToast(`${state.day}일차 첫 주문: ${getTargetRecipe().name} · ${state.dailyEvent.name}`);
 }
 
+function startTutorialGame() {
+  state.tutorialMode = true;
+  state.tutorialStep = 0;
+  state.tutorialLastRenderedStep = -1;
+  state.tutorialStartPosition = null;
+  state.coins = 35;
+  state.inventory = {};
+  state.recipeRecords = {};
+  state.reputation = 0;
+  state.upgrades = {};
+  state.history = [];
+  state.savedActiveDay = null;
+  state.day = 1;
+  state.timeLeft = GAME_SECONDS;
+  state.selectedIngredients = [];
+  state.currentQuest = null;
+  state.pendingDish = null;
+  state.lastJudgement = null;
+  state.minigame = null;
+  state.scoreboardConclusion = null;
+  clearOrderChallengeTimer();
+  clearCrates();
+  player.position.set(0, 0, 0);
+  player.rotation.y = 0;
+  playerCarryMesh.visible = false;
+  setupTutorialOrder();
+  startRunningDay();
+  renderTutorialGuide(true);
+  showToast("튜토리얼 플레이를 시작합니다.");
+}
+
+function setupTutorialOrder() {
+  const recipe = RECIPES[0];
+  state.dailyEvent = DAILY_EVENTS[0];
+  state.orderIndex = 0;
+  state.orderQueue = [
+    {
+      recipe,
+      requiredScore: 70,
+      customer: CUSTOMER_PREFERENCES.find((preference) => preference.name === "부드러운 맛 선호") || CUSTOMER_PREFERENCES[0],
+    },
+  ];
+  state.targetRecipe = recipe;
+  state.serviceStats = {
+    completedOrders: 0,
+    failedJudgements: 0,
+    bestScore: 0,
+    coinsEarned: 0,
+    reputationEarned: 0,
+    dishes: [],
+  };
+}
+
+function endTutorialMode(message) {
+  if (state.minigame?.frameId) cancelAnimationFrame(state.minigame.frameId);
+  clearOrderChallengeTimer();
+  clearCrates();
+  state.tutorialMode = false;
+  state.tutorialStep = 0;
+  state.tutorialLastRenderedStep = -1;
+  state.tutorialStartPosition = null;
+  state.running = false;
+  state.gameOver = false;
+  state.modalOpen = false;
+  state.modalReturn = null;
+  state.coins = 12;
+  state.timeLeft = GAME_SECONDS;
+  state.inventory = {};
+  state.selectedIngredients = [];
+  state.recipeRecords = {};
+  state.reputation = 0;
+  state.upgrades = {};
+  state.history = [];
+  state.savedActiveDay = null;
+  state.dailyEvent = null;
+  state.orderQueue = [];
+  state.orderIndex = 0;
+  state.serviceStats = null;
+  state.currentQuest = null;
+  state.pendingDish = null;
+  state.lastJudgement = null;
+  state.minigame = null;
+  state.scoreboardConclusion = null;
+  playerCarryMesh.visible = false;
+  stopMusic();
+  closeModal(false, true);
+  dom.hud.classList.add("hidden");
+  dom.questTracker.classList.add("hidden");
+  dom.inventoryBar.classList.add("hidden");
+  dom.interactionPrompt.classList.add("hidden");
+  dom.tutorialGuide.classList.add("hidden");
+  dom.resultScreen.classList.add("hidden");
+  dom.startScreen.classList.remove("hidden");
+  dom.startScreen.classList.add("screen-visible");
+  loadProgress();
+  refreshStartActions();
+  updateHud();
+  if (message) showToast(message);
+}
+
 function continueGame() {
+  state.tutorialMode = false;
   if (!loadProgress()) {
     showToast("이어할 기록이 없습니다.");
     return;
@@ -879,6 +1127,7 @@ function startRunningDay() {
   dom.hud.classList.remove("hidden");
   dom.questTracker.classList.remove("hidden");
   dom.inventoryBar.classList.remove("hidden");
+  dom.tutorialGuide.classList.toggle("hidden", !state.tutorialMode);
   state.running = true;
   state.gameOver = false;
   ensureAudio();
@@ -891,6 +1140,8 @@ function startRunningDay() {
 }
 
 function restartGame() {
+  state.tutorialMode = false;
+  dom.tutorialGuide.classList.add("hidden");
   state.running = true;
   state.gameOver = false;
   state.modalOpen = false;
@@ -944,6 +1195,7 @@ function animate() {
     updateInteractables();
     animateMarkers(dt);
     updateHelperHamster(dt);
+    updateTutorialGuide();
   }
 
   updateCamera(dt);
@@ -2864,10 +3116,11 @@ function finishGame(won, copy) {
   dom.questTracker.classList.add("hidden");
   dom.inventoryBar.classList.add("hidden");
   dom.interactionPrompt.classList.add("hidden");
-  dom.resultKicker.textContent = won ? "three star service" : "closing time";
-  dom.resultTitle.textContent = won ? "별점 요리 완성" : "오늘의 영업 종료";
-  dom.resultCopy.textContent = copy;
-  dom.restartButton.textContent = "다음 영업일 시작";
+  dom.tutorialGuide.classList.add("hidden");
+  dom.resultKicker.textContent = state.tutorialMode ? "tutorial complete" : won ? "three star service" : "closing time";
+  dom.resultTitle.textContent = state.tutorialMode ? "튜토리얼 완료" : won ? "별점 요리 완성" : "오늘의 영업 종료";
+  dom.resultCopy.textContent = state.tutorialMode ? "첫 영업의 기본 흐름을 모두 경험했습니다. 이제 일반 새 게임으로 도전해보세요." : copy;
+  dom.restartButton.textContent = state.tutorialMode ? "시작 화면으로" : "다음 영업일 시작";
   dom.resultScreen.classList.remove("hidden");
   saveProgress();
 }
