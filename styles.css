@@ -494,6 +494,38 @@ button {
   padding: 0 14px;
 }
 
+.pause-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.pause-grid button {
+  min-height: 48px;
+}
+
+.pause-settings {
+  margin-top: 16px;
+}
+
+.pause-field span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pause-field strong {
+  color: var(--teal);
+  font-size: 18px;
+}
+
+.pause-summary-card {
+  min-height: 0;
+  margin-top: 16px;
+}
+
 .buy-button {
   background: var(--teal) !important;
 }

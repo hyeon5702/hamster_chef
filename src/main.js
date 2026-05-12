@@ -123,6 +123,8 @@ const ORDER_CHALLENGE_SECONDS = 14;
 const ORDER_MAX_MISTAKES = 2;
 const ORDER_DISHES = ["별빛 크림 스튜", "숲속 버섯 플레이트", "당근 크림볼"];
 const ORDER_REQUESTS = ["매운맛 제외", "신선한 향 강조", "부드럽게 조리", "고소함 많이", "소스 따로", "치즈 추가"];
+const DEFAULT_MUSIC_VOLUME = 0.6;
+const DEFAULT_EFFECTS_VOLUME = 0.85;
 
 const CUSTOMER_PREFERENCES = [
   { name: "부드러운 맛 선호", description: "부드러움이 충분하면 +5점", trait: "creamy", threshold: 28, bonus: 5 },
@@ -221,6 +223,7 @@ const QUESTS = [
 const state = {
   running: false,
   gameOver: false,
+  paused: false,
   modalOpen: false,
   modalReturn: null,
   coins: 12,
@@ -247,6 +250,8 @@ const state = {
   scoreboardConclusion: null,
   orderTimer: null,
   soundEnabled: true,
+  musicVolume: DEFAULT_MUSIC_VOLUME,
+  effectsVolume: DEFAULT_EFFECTS_VOLUME,
   tutorialMode: false,
   tutorialStep: 0,
   tutorialStartPosition: null,
@@ -276,8 +281,10 @@ init();
 
 function init() {
   state.adminEnabled = new URLSearchParams(window.location.search).get("admin") === ADMIN_CODE;
+  loadSettings();
   setupScene();
   setupInput();
+  syncSoundToggle();
   refreshStartActions();
   updateHud();
   animate();
@@ -578,8 +585,15 @@ function setupInput() {
       return;
     }
 
-    if (event.key === "Escape" && state.modalOpen) {
-      closeModal();
+    if (event.key === "Escape") {
+      if (state.modalOpen) {
+        closeModal();
+        return;
+      }
+      if (state.running && !state.gameOver && !state.minigame?.active) {
+        event.preventDefault();
+        openPauseMenu();
+      }
       return;
     }
 
@@ -608,9 +622,41 @@ function getSavedProgress() {
   }
 }
 
+function hasPlayableProgress(data) {
+  if (!data) return false;
+  return Boolean(
+    data.activeDay
+    || data.day
+    || data.reputation
+    || (data.history && data.history.length)
+    || (data.inventory && Object.keys(data.inventory).length)
+    || (data.upgrades && Object.keys(data.upgrades).length),
+  );
+}
+
+function persistSettings() {
+  const existing = getSavedProgress() || {};
+  const data = {
+    ...existing,
+    soundEnabled: state.soundEnabled,
+    musicVolume: state.musicVolume,
+    effectsVolume: state.effectsVolume,
+  };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  refreshStartActions();
+}
+
+function loadSettings() {
+  const data = getSavedProgress();
+  if (!data) return;
+  state.soundEnabled = data.soundEnabled ?? true;
+  state.musicVolume = clampVolume(data.musicVolume, DEFAULT_MUSIC_VOLUME);
+  state.effectsVolume = clampVolume(data.effectsVolume, DEFAULT_EFFECTS_VOLUME);
+}
+
 function saveProgress() {
   if (state.tutorialMode) {
-    refreshStartActions();
+    persistSettings();
     return;
   }
 
@@ -622,6 +668,9 @@ function saveProgress() {
     upgrades: state.upgrades,
     history: state.history,
     day: state.day,
+    soundEnabled: state.soundEnabled,
+    musicVolume: state.musicVolume,
+    effectsVolume: state.effectsVolume,
     activeDay: state.running && !state.gameOver
       ? {
           day: state.day,
@@ -642,7 +691,7 @@ function saveProgress() {
 
 function loadProgress() {
   const data = getSavedProgress();
-  if (!data) return false;
+  if (!hasPlayableProgress(data)) return false;
   state.coins = data.coins ?? 12;
   state.inventory = data.inventory || {};
   state.recipeRecords = data.recipeRecords || {};
@@ -651,12 +700,16 @@ function loadProgress() {
   state.history = data.history || [];
   state.day = data.day || 0;
   state.savedActiveDay = data.activeDay || null;
+  state.soundEnabled = data.soundEnabled ?? state.soundEnabled;
+  state.musicVolume = clampVolume(data.musicVolume, state.musicVolume);
+  state.effectsVolume = clampVolume(data.effectsVolume, state.effectsVolume);
+  syncSoundToggle();
   return true;
 }
 
 function refreshStartActions() {
   if (!dom.continueButton) return;
-  dom.continueButton.classList.toggle("hidden", !getSavedProgress());
+  dom.continueButton.classList.toggle("hidden", !hasPlayableProgress(getSavedProgress()));
 }
 
 function openHistoryModal() {
@@ -684,6 +737,146 @@ function openHistoryModal() {
     <p>최근 영업일의 이벤트, 완료 주문, 평판 성장을 확인합니다.</p>
     <div class="scoreboard-list">${rows}</div>
   `);
+}
+
+function openPauseMenu() {
+  if (!state.running || state.gameOver || state.minigame?.active) return;
+  state.paused = true;
+  dom.interactionPrompt.classList.add("hidden");
+
+  const exitLabel = state.tutorialMode ? "튜토리얼 종료" : "저장하고 나가기";
+  openModal(`
+    <h2>일시정지</h2>
+    <p>영업을 잠시 멈췄습니다. 설정을 조정하거나 시작 화면으로 나갈 수 있습니다.</p>
+    <div class="pause-grid">
+      <button type="button" data-pause-action="resume">계속하기</button>
+      <button type="button" data-pause-action="save-exit">${exitLabel}</button>
+      <button type="button" data-pause-action="toggle-sound">${state.soundEnabled ? "소리 끄기" : "소리 켜기"}</button>
+      <button type="button" data-pause-action="help">조작법 보기</button>
+    </div>
+    <div class="admin-grid pause-settings">
+      <label class="admin-field pause-field">
+        <span>배경음 볼륨 <strong id="pause-music-volume">${formatVolumePercent(state.musicVolume)}</strong></span>
+        <input type="range" min="0" max="100" value="${Math.round(state.musicVolume * 100)}" data-volume-slider="music" />
+      </label>
+      <label class="admin-field pause-field">
+        <span>효과음 볼륨 <strong id="pause-effects-volume">${formatVolumePercent(state.effectsVolume)}</strong></span>
+        <input type="range" min="0" max="100" value="${Math.round(state.effectsVolume * 100)}" data-volume-slider="effects" />
+      </label>
+    </div>
+    <article class="choice-card pause-summary-card">
+      <h3>현재 목표</h3>
+      <p>${state.orderQueue.length ? `${getOrderLabel()} 주문 ${getTargetRecipe().name} · 목표 ${getRequiredScore()}점 이상 · ${getCustomerPreference().name}` : "현재 진행 중인 주문이 없습니다."}</p>
+    </article>
+  `, { returnTo: "resume-game" });
+
+  bindPauseMenuEvents();
+}
+
+function bindPauseMenuEvents() {
+  dom.modalContent.querySelectorAll("[data-pause-action]").forEach((button) => {
+    button.addEventListener("click", () => handlePauseMenuAction(button.dataset.pauseAction));
+  });
+
+  dom.modalContent.querySelectorAll("[data-volume-slider]").forEach((input) => {
+    input.addEventListener("input", () => updateVolumeSetting(input.dataset.volumeSlider, Number(input.value)));
+    input.addEventListener("change", () => {
+      if (input.dataset.volumeSlider === "effects" && state.soundEnabled) playClick();
+    });
+  });
+}
+
+function handlePauseMenuAction(action) {
+  if (action === "resume") {
+    resumeFromPauseMenu();
+    return;
+  }
+
+  if (action === "save-exit") {
+    saveAndExitToStartScreen();
+    return;
+  }
+
+  if (action === "toggle-sound") {
+    toggleSound();
+    openPauseMenu();
+    return;
+  }
+
+  if (action === "help") {
+    openPauseHelp();
+  }
+}
+
+function openPauseHelp() {
+  openModal(`
+    <h2>조작법</h2>
+    <p>잠시 쉬는 동안 기본 조작과 영업 흐름을 다시 확인할 수 있습니다.</p>
+    <div class="grid-list">
+      <article class="choice-card">
+        <h3>이동</h3>
+        <p><strong>WASD</strong> 또는 <strong>방향키</strong>로 이동하고 <strong>Shift</strong>로 빠르게 달립니다.</p>
+      </article>
+      <article class="choice-card">
+        <h3>상호작용</h3>
+        <p><strong>E</strong> 또는 <strong>Enter</strong>로 게시판, 상점, 조리대, 평가 테이블을 사용합니다.</p>
+      </article>
+      <article class="choice-card">
+        <h3>레시피 노트</h3>
+        <p><strong>Tab</strong>으로 현재 주문 레시피, 목표 점수, 손님 취향을 다시 확인할 수 있습니다.</p>
+      </article>
+      <article class="choice-card">
+        <h3>영업 흐름</h3>
+        <p>일 게시판에서 코인을 벌고 재료를 산 뒤, 조리대에서 요리하고 평가 테이블에서 점수를 받으면 됩니다.</p>
+      </article>
+    </div>
+  `, { returnTo: "pause-menu" });
+}
+
+function updateVolumeSetting(type, rawValue) {
+  const nextValue = clampVolume(rawValue / 100, type === "music" ? DEFAULT_MUSIC_VOLUME : DEFAULT_EFFECTS_VOLUME);
+  if (type === "music") {
+    state.musicVolume = nextValue;
+    const output = dom.modalContent.querySelector("#pause-music-volume");
+    if (output) output.textContent = formatVolumePercent(nextValue);
+  } else {
+    state.effectsVolume = nextValue;
+    const output = dom.modalContent.querySelector("#pause-effects-volume");
+    if (output) output.textContent = formatVolumePercent(nextValue);
+  }
+  persistSettings();
+}
+
+function resumeFromPauseMenu() {
+  state.paused = false;
+  closeModal(false, true);
+  playClick();
+}
+
+function saveAndExitToStartScreen() {
+  if (state.tutorialMode) {
+    endTutorialMode("튜토리얼을 종료했습니다.");
+    return;
+  }
+
+  saveProgress();
+  state.running = false;
+  state.gameOver = false;
+  state.paused = false;
+  state.modalOpen = false;
+  state.modalReturn = null;
+  stopMusic();
+  closeModal(false, true);
+  dom.hud.classList.add("hidden");
+  dom.questTracker.classList.add("hidden");
+  dom.inventoryBar.classList.add("hidden");
+  dom.interactionPrompt.classList.add("hidden");
+  dom.tutorialGuide.classList.add("hidden");
+  dom.resultScreen.classList.add("hidden");
+  dom.startScreen.classList.remove("hidden");
+  dom.startScreen.classList.add("screen-visible");
+  refreshStartActions();
+  showToast("진행 상황을 저장하고 시작 화면으로 돌아갔습니다.");
 }
 
 function updateTutorialGuide() {
@@ -1046,6 +1239,7 @@ function endTutorialMode(message) {
   state.tutorialStartPosition = null;
   state.running = false;
   state.gameOver = false;
+  state.paused = false;
   state.modalOpen = false;
   state.modalReturn = null;
   state.coins = 12;
@@ -1130,6 +1324,7 @@ function startRunningDay() {
   dom.tutorialGuide.classList.toggle("hidden", !state.tutorialMode);
   state.running = true;
   state.gameOver = false;
+  state.paused = false;
   ensureAudio();
   playClick();
   startMusic();
@@ -1144,6 +1339,7 @@ function restartGame() {
   dom.tutorialGuide.classList.add("hidden");
   state.running = true;
   state.gameOver = false;
+  state.paused = false;
   state.modalOpen = false;
   state.modalReturn = null;
   state.coins = Math.max(12, state.coins);
@@ -1176,7 +1372,7 @@ function restartGame() {
 
 function toggleSound() {
   state.soundEnabled = !state.soundEnabled;
-  dom.soundToggle.textContent = state.soundEnabled ? "♪" : "×";
+  syncSoundToggle();
   if (state.soundEnabled) {
     ensureAudio();
     startMusic();
@@ -1184,12 +1380,13 @@ function toggleSound() {
   } else {
     stopMusic();
   }
+  persistSettings();
 }
 
 function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (state.running && !state.gameOver) {
+  if (state.running && !state.gameOver && !state.paused) {
     updatePlayer(dt);
     updateTimer(dt);
     updateInteractables();
@@ -3108,6 +3305,7 @@ function finishGame(won, copy) {
   state.minigame = null;
   state.running = false;
   state.gameOver = true;
+  state.paused = false;
   state.modalOpen = false;
   closeModal(false, true);
   stopMusic();
@@ -3186,6 +3384,10 @@ function closeModal(play = true, force = false) {
 
   if (!force && returnTo === "cooking") {
     openCooking();
+  } else if (!force && returnTo === "pause-menu") {
+    openPauseMenu();
+  } else if (!force && returnTo === "resume-game") {
+    state.paused = false;
   } else if (!force && returnTo === "complete-order" && state.scoreboardConclusion) {
     finishPassedScoreboard();
   }
@@ -3242,6 +3444,20 @@ function formatClearTime(seconds) {
   const min = Math.floor(safe / 60);
   const sec = safe % 60;
   return `${min}분 ${String(sec).padStart(2, "0")}초`;
+}
+
+function formatVolumePercent(value) {
+  return `${Math.round(clampVolume(value, 0) * 100)}%`;
+}
+
+function clampVolume(value, fallback) {
+  const safe = Number.isFinite(value) ? value : fallback;
+  return THREE.MathUtils.clamp(safe, 0, 1);
+}
+
+function syncSoundToggle() {
+  if (!dom.soundToggle) return;
+  dom.soundToggle.textContent = state.soundEnabled ? "♪" : "×";
 }
 
 function getReputationTier() {
@@ -3344,8 +3560,8 @@ function startMusic() {
   let step = 0;
   musicTimer = setInterval(() => {
     if (!state.running || state.modalOpen || !state.soundEnabled) return;
-    playTone(notes[step % notes.length], 0.08, 0.045, "sine");
-    if (step % 3 === 0) playTone(notes[(step + 2) % notes.length] / 2, 0.1, 0.028, "triangle");
+    playTone(notes[step % notes.length], 0.08, 0.045, "sine", "music");
+    if (step % 3 === 0) playTone(notes[(step + 2) % notes.length] / 2, 0.1, 0.028, "triangle", "music");
     step += 1;
   }, 620);
 }
@@ -3355,14 +3571,17 @@ function stopMusic() {
   musicTimer = undefined;
 }
 
-function playTone(freq, duration = 0.1, gain = 0.08, type = "sine") {
+function playTone(freq, duration = 0.1, gain = 0.08, type = "sine", channel = "effects") {
   if (!state.soundEnabled || !audioCtx) return;
   const osc = audioCtx.createOscillator();
   const amp = audioCtx.createGain();
+  const channelVolume = channel === "music" ? state.musicVolume : state.effectsVolume;
+  const finalGain = Math.max(0.0001, gain * channelVolume);
+  if (channelVolume <= 0) return;
   osc.type = type;
   osc.frequency.value = freq;
   amp.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-  amp.gain.exponentialRampToValueAtTime(gain, audioCtx.currentTime + 0.015);
+  amp.gain.exponentialRampToValueAtTime(finalGain, audioCtx.currentTime + 0.015);
   amp.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
   osc.connect(amp).connect(audioCtx.destination);
   osc.start();
