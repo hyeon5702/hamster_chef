@@ -41,10 +41,23 @@ create table if not exists public.service_history (
   unique (user_id, day)
 );
 
+create table if not exists public.challenge_leaderboard (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  nickname text not null default '햄스터 셰프',
+  challenge_score integer not null default 0,
+  best_dish_score integer not null default 0,
+  clear_time_seconds integer not null default 0,
+  completed_orders integer not null default 0,
+  total_orders integer not null default 0,
+  day_reached integer not null default 0,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.profiles enable row level security;
 alter table public.game_settings enable row level security;
 alter table public.game_saves enable row level security;
 alter table public.service_history enable row level security;
+alter table public.challenge_leaderboard enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 drop policy if exists "profiles_insert_own" on public.profiles;
@@ -58,6 +71,9 @@ drop policy if exists "saves_update_own" on public.game_saves;
 drop policy if exists "history_select_own" on public.service_history;
 drop policy if exists "history_insert_own" on public.service_history;
 drop policy if exists "history_update_own" on public.service_history;
+drop policy if exists "challenge_leaderboard_select_all" on public.challenge_leaderboard;
+drop policy if exists "challenge_leaderboard_insert_own" on public.challenge_leaderboard;
+drop policy if exists "challenge_leaderboard_update_own" on public.challenge_leaderboard;
 
 create policy "profiles_select_own"
 on public.profiles
@@ -130,6 +146,25 @@ with check (auth.uid() = user_id);
 
 create policy "history_update_own"
 on public.service_history
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "challenge_leaderboard_select_all"
+on public.challenge_leaderboard
+for select
+to authenticated
+using (true);
+
+create policy "challenge_leaderboard_insert_own"
+on public.challenge_leaderboard
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "challenge_leaderboard_update_own"
+on public.challenge_leaderboard
 for update
 to authenticated
 using (auth.uid() = user_id)

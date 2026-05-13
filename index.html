@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <title>햄스터 셰프</title>
-    <link rel="stylesheet" href="./styles.css?v=guided-tutorial-20260512" />
+    <link rel="stylesheet" href="./styles.css?v=guided-tutorial-20260513k" />
   </head>
   <body>
     <main id="game-root">
@@ -16,8 +16,8 @@
           <p class="eyebrow">tiny bistro adventure</p>
           <h1>햄스터 셰프</h1>
           <p class="start-copy">
-            작은 식당의 요리사 햄스터가 되어 노동으로 코인을 벌고, 재료를 골라
-            별점 요리에 도전하세요.
+            작은 식당의 요리사 햄스터가 되어 짧고 치열한 챌린지 영업에 도전하거나,
+            느긋한 성장 모드에서 식당을 키워보세요.
           </p>
           <section id="auth-panel" class="auth-panel" aria-label="계정">
             <div class="auth-header">
@@ -45,10 +45,26 @@
             </div>
           </section>
           <div id="start-actions" class="start-actions hidden">
-            <button id="start-button" class="primary-action" type="button">새 게임</button>
-            <button id="continue-button" class="primary-action secondary-action hidden" type="button">이어하기</button>
-            <button id="tutorial-button" class="primary-action secondary-action" type="button">튜토리얼 플레이</button>
-            <button id="history-button" class="primary-action secondary-action" type="button">영업 기록</button>
+            <article class="mode-card">
+              <h2>챌린지 모드</h2>
+              <p>제한시간 안에 주문을 완성하고 점수와 클리어 시간으로 기록을 겨뤄보세요.</p>
+              <div class="mode-actions">
+                <button id="start-button" class="primary-action" type="button">챌린지 시작</button>
+                <button id="continue-button" class="primary-action secondary-action hidden" type="button">챌린지 이어하기</button>
+              </div>
+            </article>
+            <article class="mode-card mode-card-upcoming">
+              <h2>성장 모드</h2>
+              <p>제한 시간 없이 요리를 만들고 돈을 벌며 업그레이드와 가구로 식당을 키우는 장기 플레이 모드입니다.</p>
+              <div class="mode-actions">
+                <button id="career-button" class="primary-action secondary-action" type="button">성장 모드 시작</button>
+              </div>
+            </article>
+            <div class="start-utility-actions">
+              <button id="leaderboard-button" class="primary-action secondary-action" type="button">챌린지 랭킹</button>
+              <button id="tutorial-button" class="primary-action secondary-action" type="button">튜토리얼 플레이</button>
+              <button id="history-button" class="primary-action secondary-action" type="button">영업 기록</button>
+            </div>
           </div>
         </div>
       </section>
@@ -56,7 +72,7 @@
       <section id="hud" class="hud hidden" aria-label="게임 상태">
         <div class="hud-left">
           <div class="hud-title">햄스터 셰프</div>
-          <div id="objective" class="objective">목표 레시피는 새 게임 시작 시 정해집니다.</div>
+          <div id="objective" class="objective">챌린지 모드 목표 레시피는 시작 시 정해집니다.</div>
         </div>
         <div class="hud-stats">
           <div class="stat"><span>코인</span><strong id="coin-count">0</strong></div>
@@ -106,6 +122,6 @@
       <div id="toast" class="toast hidden" role="status"></div>
     </main>
 
-    <script type="module" src="./src/main.js?v=guided-tutorial-20260512"></script>
+    <script type="module" src="./src/main.js?v=guided-tutorial-20260513k"></script>
   </body>
 </html>
