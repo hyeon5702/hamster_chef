@@ -1285,6 +1285,68 @@ function mapChallengeRecord(row) {
   };
 }
 
+function getLeaderboardSetupHelp() {
+  return {
+    title: "Supabase 랭킹 테이블 설정 필요",
+    body: "Supabase SQL Editor에서 `supabase/challenge_leaderboard.sql` 내용을 한 번 실행하면 챌린지 랭킹이 바로 동작합니다.",
+    code: `create table if not exists public.challenge_leaderboard (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  nickname text not null default '햄스터 셰프',
+  challenge_score integer not null default 0,
+  best_dish_score integer not null default 0,
+  clear_time_seconds integer not null default 0,
+  completed_orders integer not null default 0,
+  total_orders integer not null default 0,
+  day_reached integer not null default 0,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+alter table public.challenge_leaderboard enable row level security;
+
+drop policy if exists "challenge_leaderboard_select_all" on public.challenge_leaderboard;
+drop policy if exists "challenge_leaderboard_insert_own" on public.challenge_leaderboard;
+drop policy if exists "challenge_leaderboard_update_own" on public.challenge_leaderboard;
+
+create policy "challenge_leaderboard_select_all"
+on public.challenge_leaderboard
+for select
+to authenticated
+using (true);
+
+create policy "challenge_leaderboard_insert_own"
+on public.challenge_leaderboard
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "challenge_leaderboard_update_own"
+on public.challenge_leaderboard
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);`,
+  };
+}
+
+function mapLeaderboardError(error) {
+  const message = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`.toLowerCase();
+  if (message.includes("challenge_leaderboard") && (message.includes("does not exist") || message.includes("could not find the table") || message.includes("schema cache"))) {
+    return getLeaderboardSetupHelp();
+  }
+  if (message.includes("permission denied") || message.includes("row-level security")) {
+    return {
+      title: "Supabase 권한 설정 확인 필요",
+      body: "`supabase/challenge_leaderboard.sql`의 정책까지 함께 실행해야 랭킹 조회와 저장이 동작합니다.",
+      code: null,
+    };
+  }
+  return {
+    title: "랭킹 데이터를 불러오지 못했습니다",
+    body: "Supabase 연결 상태와 랭킹 테이블 설정을 확인해주세요.",
+    code: null,
+  };
+}
+
 async function saveChallengeLeaderboardEntry() {
   const client = getSupabase();
   if (!client || !state.authUser || !state.serviceStats?.completedOrders) return;
@@ -1332,18 +1394,22 @@ async function fetchChallengeLeaderboard(limit = 10) {
   ]);
 
   if (entriesRes.error || personalRes.error) {
-    console.error(entriesRes.error || personalRes.error);
+    const sourceError = entriesRes.error || personalRes.error;
+    console.error(sourceError);
+    const help = mapLeaderboardError(sourceError);
     return {
       entries: [],
       personal: null,
-      error: "랭킹 데이터를 불러오지 못했습니다. Supabase에 랭킹 테이블이 준비되었는지 확인해주세요.",
+      error: help.body,
+      errorTitle: help.title,
+      errorCode: help.code,
     };
   }
 
   const entries = (entriesRes.data || []).map(mapChallengeRecord).filter(Boolean);
   const personal = mapChallengeRecord(personalRes.data);
   state.personalChallengeRecord = personal;
-  return { entries, personal, error: "" };
+  return { entries, personal, error: "", errorTitle: "", errorCode: "" };
 }
 
 async function clearRemotePlayableProgress() {
