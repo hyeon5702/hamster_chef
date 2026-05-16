@@ -28,6 +28,7 @@ const dom = {
   coinCount: document.querySelector("#coin-count"),
   reputationCount: document.querySelector("#reputation-count"),
   timer: document.querySelector("#timer"),
+  mapButton: document.querySelector("#map-button"),
   recipeNoteButton: document.querySelector("#recipe-note-button"),
   soundToggle: document.querySelector("#sound-toggle"),
   questTracker: document.querySelector("#quest-tracker"),
@@ -50,6 +51,11 @@ const dom = {
   resultTitle: document.querySelector("#result-title"),
   resultCopy: document.querySelector("#result-copy"),
   restartButton: document.querySelector("#restart-button"),
+  challengeLbScreen: document.querySelector("#challenge-leaderboard-screen"),
+  challengeLbTitle: document.querySelector("#challenge-lb-title"),
+  challengeLbSummary: document.querySelector("#challenge-lb-summary"),
+  challengeLbContent: document.querySelector("#challenge-lb-content"),
+  challengeLbExit: document.querySelector("#challenge-lb-exit"),
   toast: document.querySelector("#toast"),
 };
 
@@ -111,6 +117,60 @@ const INGREDIENTS = [
     unlockReputation: 40,
     traits: { sweet: 22, fresh: 18 },
   },
+  {
+    id: "market-spice",
+    name: "향신 분말",
+    price: 24,
+    color: "#c85f37",
+    art: "pepper",
+    unlockDay: 2,
+    traits: { savory: 10, spicy: 14 },
+  },
+  {
+    id: "market-cheese",
+    name: "고급 치즈",
+    price: 30,
+    color: "#f4d265",
+    art: "cheese",
+    unlockDay: 2,
+    traits: { savory: 32, creamy: 14 },
+  },
+  {
+    id: "forest-herb",
+    name: "숲 허브",
+    price: 26,
+    color: "#3cb673",
+    art: "herb",
+    unlockDay: 4,
+    traits: { fresh: 30, savory: 8 },
+  },
+  {
+    id: "dew-berry",
+    name: "이슬 베리",
+    price: 28,
+    color: "#8a68db",
+    art: "berry",
+    unlockDay: 4,
+    traits: { sweet: 16, fresh: 20 },
+  },
+  {
+    id: "greenhouse-carrot",
+    name: "온실 당근",
+    price: 24,
+    color: "#ff9a52",
+    art: "carrot",
+    unlockDay: 6,
+    traits: { fresh: 24, sweet: 14 },
+  },
+  {
+    id: "mini-tomato",
+    name: "미니 토마토",
+    price: 22,
+    color: "#da5446",
+    art: "berry",
+    unlockDay: 6,
+    traits: { fresh: 22, sweet: 8 },
+  },
 ];
 
 const TRAIT_LABELS = {
@@ -143,10 +203,18 @@ const ORDER_CHALLENGE_SECONDS = 14;
 const ORDER_MAX_MISTAKES = 2;
 const ORDER_DISHES = ["별빛 크림 스튜", "숲속 버섯 플레이트", "당근 크림볼"];
 const ORDER_REQUESTS = ["매운맛 제외", "신선한 향 강조", "부드럽게 조리", "고소함 많이", "소스 따로", "치즈 추가"];
-const DEFAULT_MUSIC_VOLUME = 0.6;
+const DEFAULT_MUSIC_VOLUME = 0.2;
 const DEFAULT_EFFECTS_VOLUME = 0.85;
 const BGM_AUDIO_PATH = "./assets/audio/hamster-chef-bgm.mp3";
 const AUDIO_SESSION_KEY = `session-${Date.now()}`;
+const BGM_VOLUME_SCALE = 1 / 6;
+const EFFECTS_VOLUME_SCALE = 2.25;
+
+const ORDER_DISH_ART = {
+  "별빛 크림 스튜": ["cream", "cheese", "herb"],
+  "숲속 버섯 플레이트": ["mushroom", "herb", "cheese"],
+  "당근 크림볼": ["carrot", "cream", "berry"],
+};
 
 const CUSTOMER_PREFERENCES = [
   { name: "부드러운 맛 선호", description: "부드러움이 충분하면 +5점", trait: "creamy", threshold: 28, bonus: 5 },
@@ -247,24 +315,62 @@ const RECIPES = [
 ];
 
 const QUESTS = [
+  { id: "errand", name: "주문표 전달", pay: 20, summary: "게시판의 주문표를 주방 카운터에 전달합니다." },
+  { id: "dishwash", name: "반짝 접시 정리", pay: 25, summary: "싱크대에서 접시 5장을 닦습니다." },
+  { id: "stock", name: "재료 상자 정리", pay: 30, summary: "식당 바닥의 상자 3개를 선반으로 옮깁니다." },
+  // ── 신규 ────────────────────────────────────────────────
+  { id: "sort", name: "재료 선별", pay: 28, summary: "선반에서 상한 재료 2개를 찾아 골라냅니다." },
+  { id: "mop", name: "홀 청소", pay: 22, summary: "식당 바닥의 얼룩 5개를 밟아 닦아냅니다." },
+  { id: "water", name: "화분 물 주기", pay: 26, summary: "상점 앞 화분 4개에 물을 80~95% 구간에 맞춥니다." },
+];
+
+const CHALLENGE_QUEST_IDS = QUESTS.map((quest) => quest.id);
+
+const CAREER_REGIONS = [
   {
-    id: "errand",
-    name: "주문표 전달",
-    pay: 20,
-    summary: "게시판의 주문표를 주방 카운터에 전달합니다.",
+    id: "restaurant",
+    name: "식당 주방",
+    unlockDay: 1,
+    description: "요리, 평가, 업그레이드, 일 게시판이 모두 있는 기본 운영 구역입니다.",
+    short: "운영 거점",
+    sky: "#8bd4d0",
+    fog: "#8bd4d0",
   },
   {
-    id: "dishwash",
-    name: "반짝 접시 정리",
-    pay: 25,
-    summary: "싱크대에서 접시 5장을 닦습니다.",
+    id: "market",
+    name: "중앙 시장",
+    unlockDay: 2,
+    description: "오늘의 특가 재료를 흥정 미니게임으로 더 싸게 들여올 수 있습니다.",
+    short: "흥정과 특가",
+    sky: "#e2bf6d",
+    fog: "#e5c984",
   },
   {
-    id: "stock",
-    name: "재료 상자 정리",
-    pay: 30,
-    summary: "식당 바닥의 상자 3개를 선반으로 옮깁니다.",
+    id: "forest",
+    name: "버섯 숲",
+    unlockDay: 4,
+    description: "채집 포인트를 기억해 무료 재료와 희귀 숲 재료를 확보합니다.",
+    short: "기억 채집",
+    sky: "#89b68b",
+    fog: "#9bc29b",
   },
+  {
+    id: "greenhouse",
+    name: "옥상 온실",
+    unlockDay: 6,
+    description: "작물을 심고 관리해 안정적인 재료 공급처를 키웁니다.",
+    short: "재배와 수확",
+    sky: "#8dc9b1",
+    fog: "#9fd4bf",
+  },
+];
+
+const CAREER_MARKET_INGREDIENTS = ["market-cheese", "market-spice", "cream", "berry"];
+
+const GREENHOUSE_CROPS = [
+  { ingredientId: "herb", name: "초록 허브 화분", unlockDay: 6, yieldAmount: 2 },
+  { ingredientId: "greenhouse-carrot", name: "온실 당근 화분", unlockDay: 6, yieldAmount: 2 },
+  { ingredientId: "mini-tomato", name: "미니 토마토 화분", unlockDay: 7, yieldAmount: 3 },
 ];
 
 const state = {
@@ -292,6 +398,7 @@ const state = {
   orderIndex: 0,
   serviceStats: null,
   currentQuest: null,
+  lastChallengeQuestId: null,
   pendingDish: null,
   lastJudgement: null,
   minigame: null,
@@ -312,6 +419,8 @@ const state = {
   remoteCareerProgress: null,
   personalChallengeRecord: null,
   careerStats: null,
+  careerData: null,
+  regionActivity: null,
   authMode: "login",
   authMessage: "",
   authBannerType: "warning",
@@ -338,6 +447,7 @@ let bgmAudio;
 let restartMusicOnNextPlay = true;
 let toastTimer;
 let supabase;
+let questArrow = null;
 
 init();
 
@@ -476,6 +586,8 @@ function setupScene() {
   createPlayer();
   createHelperHamster();
   createDecor();
+  createCareerRegionDecor();
+  createQuestArrow();
 
   window.addEventListener("resize", onResize);
 }
@@ -606,9 +718,55 @@ function createStation({ id, label, position, color, marker, action }) {
 
   scene.add(group);
 
-  const station = { id, label, group, position: group.position, radius: 2.2, action, markerMesh };
+  const station = {
+    id,
+    label,
+    defaultLabel: label,
+    defaultColor: color,
+    defaultMarker: marker,
+    group,
+    position: group.position,
+    radius: 2.2,
+    action,
+    defaultAction: action,
+    markerMesh,
+    base,
+    labelBoard,
+  };
   interactables.push(station);
   return station;
+}
+
+function createQuestArrow() {
+  const group = new THREE.Group();
+  const cone = mesh(new THREE.ConeGeometry(0.28, 0.55, 8), mat("#f5c84b"), [0, 0, 0]);
+  cone.rotation.z = Math.PI;
+  group.add(cone);
+  const stem = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.28, 8), mat("#f5c84b"), [0, 0.42, 0]);
+  group.add(stem);
+  group.visible = false;
+  scene.add(group);
+  questArrow = group;
+}
+
+const QUEST_STATION_MAP = {
+  dishwash: "sink", errand: "counter", stock: "shelf",
+  sort: "shelf", water: "shop", mop: null,
+};
+
+function updateQuestArrow() {
+  if (!questArrow) return;
+  const quest = state.currentQuest;
+  if (!quest || quest.completed) { questArrow.visible = false; return; }
+  const stationKey = QUEST_STATION_MAP[quest.id];
+  const station = stationKey ? stations[stationKey] : null;
+  if (station?.group) {
+    const p = station.group.position;
+    questArrow.position.set(p.x, 3.1, p.z);
+    questArrow.visible = true;
+  } else {
+    questArrow.visible = false;
+  }
 }
 
 function createDecor() {
@@ -628,6 +786,73 @@ function createDecor() {
     pot.add(mesh(new THREE.SphereGeometry(0.32, 12, 8), mat(i % 2 ? "#2da66f" : "#277d85"), [0, 0.62, 0]));
     scene.add(pot);
   }
+}
+
+function createCareerRegionDecor() {
+  worldObjects.regionDecor = {
+    restaurant: new THREE.Group(),
+    market: new THREE.Group(),
+    forest: new THREE.Group(),
+    greenhouse: new THREE.Group(),
+  };
+
+  const market = worldObjects.regionDecor.market;
+  for (const x of [-6.8, -2.2, 2.4, 6.9]) {
+    const stall = new THREE.Group();
+    stall.position.set(x, 0, -3.6 + (x % 2 === 0 ? 0.6 : 0));
+    stall.add(mesh(new THREE.BoxGeometry(1.8, 0.2, 1.4), mat("#fff8e8"), [0, 1.2, 0]));
+    stall.add(mesh(new THREE.BoxGeometry(1.7, 0.12, 1.3), mat("#ef5b4f"), [0, 1.42, 0]));
+    stall.add(mesh(new THREE.BoxGeometry(1.5, 0.6, 1.1), mat("#c77c4a"), [0, 0.48, 0]));
+    stall.add(mesh(new THREE.BoxGeometry(0.28, 1.12, 0.28), mat("#8d6a4f"), [-0.66, 0.56, -0.42]));
+    stall.add(mesh(new THREE.BoxGeometry(0.28, 1.12, 0.28), mat("#8d6a4f"), [0.66, 0.56, -0.42]));
+    stall.add(mesh(new THREE.BoxGeometry(0.28, 1.12, 0.28), mat("#8d6a4f"), [-0.66, 0.56, 0.42]));
+    stall.add(mesh(new THREE.BoxGeometry(0.28, 1.12, 0.28), mat("#8d6a4f"), [0.66, 0.56, 0.42]));
+    market.add(stall);
+  }
+
+  const forest = worldObjects.regionDecor.forest;
+  for (const [x, z, trunkColor, leafColor] of [
+    [-7.8, -4.6, "#7a5538", "#4b9d5a"],
+    [-4.2, 5.2, "#7a5538", "#63b56f"],
+    [4.6, -4.9, "#7a5538", "#5ea966"],
+    [7.4, 4.8, "#7a5538", "#438b50"],
+  ]) {
+    const tree = new THREE.Group();
+    tree.position.set(x, 0, z);
+    tree.add(mesh(new THREE.CylinderGeometry(0.24, 0.34, 1.5, 10), mat(trunkColor), [0, 0.75, 0]));
+    tree.add(mesh(new THREE.SphereGeometry(0.9, 14, 10), mat(leafColor), [0, 1.95, 0]));
+    forest.add(tree);
+  }
+  for (const [x, z, color] of [
+    [-2.4, -2.7, "#9a6b4f"],
+    [2.8, 3.2, "#af7b53"],
+    [0.6, -4.2, "#7b5a44"],
+    [5.8, 0.8, "#8d6b4a"],
+  ]) {
+    forest.add(mesh(new THREE.CylinderGeometry(0.32, 0.44, 0.42, 14), mat(color), [x, 0.2, z]));
+  }
+
+  const greenhouse = worldObjects.regionDecor.greenhouse;
+  for (const x of [-5.8, 0, 5.8]) {
+    const bed = new THREE.Group();
+    bed.position.set(x, 0, 3.8);
+    bed.add(mesh(new THREE.BoxGeometry(2.4, 0.44, 1.4), mat("#a36f4f"), [0, 0.22, 0]));
+    bed.add(mesh(new THREE.BoxGeometry(2.08, 0.16, 1.08), mat("#5f9a62"), [0, 0.52, 0]));
+    greenhouse.add(bed);
+  }
+  for (const x of [-6.4, -3.2, 0, 3.2, 6.4]) {
+    const arch = new THREE.Group();
+    arch.position.set(x, 0, -4.1);
+    arch.add(mesh(new THREE.BoxGeometry(0.12, 2, 0.12), mat("#d7f0e7"), [-0.8, 1, 0]));
+    arch.add(mesh(new THREE.BoxGeometry(0.12, 2, 0.12), mat("#d7f0e7"), [0.8, 1, 0]));
+    arch.add(mesh(new THREE.BoxGeometry(1.72, 0.12, 0.12), mat("#d7f0e7"), [0, 1.96, 0]));
+    greenhouse.add(arch);
+  }
+
+  Object.values(worldObjects.regionDecor).forEach((group) => {
+    group.visible = false;
+    scene.add(group);
+  });
 }
 
 function createPlayer() {
@@ -704,6 +929,7 @@ function setupInput() {
   dom.leaderboardButton.addEventListener("click", () => void openChallengeLeaderboardModal());
   dom.tutorialButton.addEventListener("click", startTutorialGame);
   dom.historyButton.addEventListener("click", openHistoryModal);
+  dom.mapButton.addEventListener("click", openCareerMapModal);
   dom.authSubmitButton.addEventListener("click", () => void handleAuthSubmit());
   dom.authSwitchButton.addEventListener("click", handleAuthSwitch);
   dom.logoutButton.addEventListener("click", () => void handleLogout());
@@ -714,6 +940,7 @@ function setupInput() {
       restartGame();
     }
   });
+  dom.challengeLbExit.addEventListener("click", exitChallengeLeaderboardScreen);
   dom.closeModal.addEventListener("click", closeModal);
   dom.interactionButton.addEventListener("click", interact);
   dom.recipeNoteButton.addEventListener("click", openRecipeNote);
@@ -738,6 +965,43 @@ function setupInput() {
       event.preventDefault();
       if (!state.minigame?.active) openRecipeNote();
       return;
+    }
+
+    if (event.key.toLowerCase() === "m" && state.running && state.gameMode === "career" && !state.gameOver) {
+      event.preventDefault();
+      openCareerMapModal();
+      return;
+    }
+
+    if (state.modalOpen && state.currentQuest?.id === "water") {
+      const k = event.key;
+      if (k === "ArrowLeft" || k === "a" || k === "A") {
+        event.preventDefault();
+        const q = state.currentQuest;
+        q.selectedPlant = (q.selectedPlant - 1 + q.plants.length) % q.plants.length;
+        updateWaterUI();
+        return;
+      }
+      if (k === "ArrowRight" || k === "d" || k === "D") {
+        event.preventDefault();
+        const q = state.currentQuest;
+        q.selectedPlant = (q.selectedPlant + 1) % q.plants.length;
+        updateWaterUI();
+        return;
+      }
+    }
+
+    if (state.modalOpen && state.currentQuest?.id === "sort") {
+      if (event.key === "ArrowLeft" || event.key === "f" || event.key === "F") {
+        event.preventDefault();
+        judgeSortItem(false);
+        return;
+      }
+      if (event.key === "ArrowRight" || event.key === "g" || event.key === "G") {
+        event.preventDefault();
+        judgeSortItem(true);
+        return;
+      }
     }
 
     if (event.key === "Escape") {
@@ -1079,6 +1343,39 @@ function createCareerStats(data = {}) {
   };
 }
 
+function createGreenhouseBed(data = {}, index = 0) {
+  return {
+    slot: index,
+    cropId: data.cropId || null,
+    stage: data.stage || 0,
+    quality: data.quality || 0,
+    lastManagedDay: data.lastManagedDay || 0,
+    ready: Boolean(data.ready),
+  };
+}
+
+function createMarketOffer(day = 1) {
+  const ingredientId = CAREER_MARKET_INGREDIENTS[(day - 1) % CAREER_MARKET_INGREDIENTS.length];
+  return {
+    ingredientId,
+    bundlePrice: 18 + Math.min(20, day * 2),
+    quantity: day >= 5 ? 3 : 2,
+    day,
+  };
+}
+
+function createCareerData(data = {}) {
+  const unlockedRegions = Array.from(new Set(["restaurant", ...(data.unlockedRegions || [])]));
+  const greenhouse = Array.from({ length: 3 }, (_, index) => createGreenhouseBed(data.greenhouse?.[index], index));
+  return {
+    currentRegion: data.currentRegion || "restaurant",
+    unlockedRegions,
+    greenhouse,
+    marketOffer: data.marketOffer || createMarketOffer(data.day || 1),
+    lastUnlockCheckDay: data.lastUnlockCheckDay || 0,
+  };
+}
+
 function saveCareerProgress() {
   const data = {
     coins: state.coins,
@@ -1088,6 +1385,7 @@ function saveCareerProgress() {
     upgrades: state.upgrades,
     day: state.day,
     careerStats: state.careerStats || createCareerStats(),
+    careerData: state.careerData || createCareerData({ day: state.day }),
     activeDay: state.running && !state.gameOver
       ? {
           day: state.day,
@@ -1115,6 +1413,9 @@ function loadCareerProgress() {
   state.upgrades = data.upgrades || {};
   state.day = data.day || 0;
   state.careerStats = createCareerStats(data.careerStats);
+  state.careerData = createCareerData({ ...data.careerData, day: data.day || 0 });
+  unlockCareerRegions(0, state.day || 0);
+  ensureCareerMarketOffer();
   state.savedActiveDay = data.activeDay || null;
   return true;
 }
@@ -1527,12 +1828,12 @@ function openCareerModePreview() {
   const hasCareerSave = hasPlayableProgress(getSavedProgress("career"));
   openModal(`
     <h2>성장 모드</h2>
-    <p>제한 시간 없이 손님 주문을 이어서 받고, 코인과 평판을 쌓아 식당을 차근차근 키우는 운영형 모드입니다.</p>
+    <p>제한 시간 없이 손님 주문을 이어서 받고, 코인과 평판을 쌓아 식당을 차근차근 키우는 운영형 모드입니다. 중앙 시장, 버섯 숲, 옥상 온실이 운영 일수에 따라 열립니다.</p>
     <div class="score-split">
       <span>시간 제한 없음</span>
       <span>손님 주문 무한 순환</span>
       <span>업그레이드 유지</span>
-      <span>성장 저장 분리</span>
+      <span>지역 이동 가능</span>
     </div>
     <article class="choice-card">
       <h3>${hasCareerSave ? "이전 운영 기록이 있습니다" : "새로운 식당 운영을 시작합니다"}</h3>
@@ -1553,6 +1854,439 @@ function openCareerModePreview() {
       }
     });
   });
+}
+
+function openCareerMapModal() {
+  if (state.gameMode !== "career" || !state.running || state.gameOver) return;
+  if (!state.careerData) state.careerData = createCareerData({ day: state.day });
+  const cards = CAREER_REGIONS.map((region) => {
+    const unlocked = isCareerRegionUnlocked(region.id);
+    const active = state.careerData.currentRegion === region.id;
+    return `
+      <article class="choice-card region-card ${active ? "active-region-card" : ""} ${unlocked ? "" : "muted-record"}">
+        <h3>${region.name}${active ? " · 현재 지역" : ""}</h3>
+        <p>${region.description}</p>
+        <p><strong>${region.short}</strong></p>
+        ${unlocked
+          ? `<button type="button" data-region-travel="${region.id}" ${active ? "disabled" : ""}>${active ? "머무는 중" : "이동하기"}</button>`
+          : `<p>${region.unlockDay}일차에 해금됩니다.</p>`}
+      </article>
+    `;
+  }).join("");
+
+  openModal(`
+    <h2>성장 모드 지도</h2>
+    <p>지역마다 운영 방식이 다릅니다. 식당은 조리와 판매, 시장은 흥정, 숲은 채집, 온실은 재배를 맡습니다.</p>
+    <div class="grid-list">${cards}</div>
+  `, { returnTo: "resume-game" });
+
+  dom.modalContent.querySelectorAll("[data-region-travel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      travelToCareerRegion(button.dataset.regionTravel);
+    });
+  });
+}
+
+function travelToCareerRegion(regionId) {
+  if (!isCareerRegionUnlocked(regionId)) {
+    showToast("아직 해금되지 않은 지역입니다.");
+    return;
+  }
+  if (state.currentQuest && !state.currentQuest.completed && regionId !== "restaurant") {
+    showToast("진행 중인 일을 마무리한 뒤 다른 지역으로 이동할 수 있습니다.");
+    return;
+  }
+  if (!state.careerData) state.careerData = createCareerData({ day: state.day });
+  state.careerData.currentRegion = regionId;
+  player.position.set(0, 0, 0);
+  player.rotation.y = 0;
+  closeModal(false, true);
+  applyCareerRegionState();
+  updateEventVisuals();
+  updateHud();
+  saveProgress();
+  showToast(`${getCareerRegionName(regionId)}로 이동했습니다.`);
+}
+
+function openMarketRegion() {
+  if (state.gameMode !== "career") return;
+  ensureCareerMarketOffer();
+  const offer = state.careerData.marketOffer;
+  const ingredient = INGREDIENTS.find((item) => item.id === offer.ingredientId) || INGREDIENTS[0];
+  openModal(`
+    <h2>중앙 시장</h2>
+    <p>시장 상인과 흥정해 오늘의 추천 재료를 묶음으로 가져옵니다. 초록 구간에 맞추면 더 싸고 더 많이 얻을 수 있습니다.</p>
+    <article class="choice-card">
+      ${ingredientImage(ingredient)}
+      <h3>오늘의 특가 · ${ingredient.name}</h3>
+      <p>${formatTraits(ingredient.traits)}</p>
+      <p><strong>${offer.quantity}개 묶음 기본가 ${offer.bundlePrice}코인</strong></p>
+      <button type="button" data-market-start="true" ${state.coins < Math.max(6, Math.floor(offer.bundlePrice * 0.75)) ? "disabled" : ""}>흥정 시작</button>
+    </article>
+  `, { returnTo: "resume-game" });
+
+  const startButton = dom.modalContent.querySelector("[data-market-start]");
+  if (startButton) {
+    startButton.addEventListener("click", startMarketBargainGame);
+  }
+}
+
+function startMarketBargainGame() {
+  ensureCareerMarketOffer();
+  const offer = state.careerData.marketOffer;
+  const minPossible = Math.max(6, Math.floor(offer.bundlePrice * 0.75));
+  if (state.coins < minPossible) {
+    showToast(`흥정을 시작하려면 최소 ${minPossible}코인이 필요합니다.`);
+    return;
+  }
+  clearRegionActivity();
+  state.regionActivity = {
+    type: "market",
+    position: 12,
+    direction: 1,
+    offer,
+  };
+
+  const render = () => {
+    if (!state.regionActivity || state.regionActivity.type !== "market") return;
+    dom.modalContent.innerHTML = `
+      <h2>시장 흥정</h2>
+      <p>움직이는 표시를 초록 구간에 맞춰 멈추세요. 더 정확할수록 더 싼 가격과 보너스 수량을 얻습니다.</p>
+      <div class="bargain-track">
+        <div class="bargain-zone bargain-zone-good"></div>
+        <div class="bargain-zone bargain-zone-perfect"></div>
+        <div id="market-pointer" class="bargain-pointer" style="left:${state.regionActivity.position}%"></div>
+      </div>
+      <article class="choice-card">
+        <h3>${getIngredientName(offer.ingredientId)} · ${offer.quantity}개 묶음</h3>
+        <p>기본가 ${offer.bundlePrice}코인</p>
+        <button type="button" data-market-stop="true">지금 멈추기</button>
+      </article>
+    `;
+    const stopButton = dom.modalContent.querySelector("[data-market-stop]");
+    if (stopButton) stopButton.addEventListener("click", resolveMarketBargainGame);
+  };
+
+  const tick = () => {
+    const activity = state.regionActivity;
+    if (!activity || activity.type !== "market") return;
+    activity.position += activity.direction * 1.8;
+    if (activity.position >= 92 || activity.position <= 8) activity.direction *= -1;
+    const pointerEl = dom.modalContent.querySelector("#market-pointer");
+    if (pointerEl) pointerEl.style.left = `${activity.position}%`;
+    activity.frameId = requestAnimationFrame(tick);
+  };
+
+  render();
+  state.regionActivity.frameId = requestAnimationFrame(tick);
+}
+
+function resolveMarketBargainGame() {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "market") return;
+  const distance = Math.abs(activity.position - 50);
+  let discountRate = 0.1;
+  let bonusQuantity = 0;
+  let label = "무난";
+  if (distance <= 5) {
+    discountRate = 0.25;
+    bonusQuantity = 1;
+    label = "Perfect";
+  } else if (distance <= 15) {
+    discountRate = 0.18;
+    label = "Good";
+  }
+  const cost = Math.max(6, Math.round(activity.offer.bundlePrice * (1 - discountRate)));
+  const intendedAmount = activity.offer.quantity + bonusQuantity;
+  const availableSpace = Math.max(0, getStorageLimit() - getInventoryCount());
+  const added = Math.min(availableSpace, intendedAmount);
+  if (state.coins < cost || added <= 0) {
+    clearRegionActivity();
+    playFail();
+    showToast(added <= 0 ? "냉장고가 가득 차 거래를 완료하지 못했습니다." : "코인이 부족해 거래를 완료하지 못했습니다.");
+    openMarketRegion();
+    return;
+  }
+  state.coins -= cost;
+  addInventoryAmount(activity.offer.ingredientId, added);
+  state.careerData.marketOffer = createMarketOffer(state.day + state.serviceStats.completedOrders + 1);
+  clearRegionActivity();
+  playCoin();
+  updateHud();
+  saveProgress();
+  openModal(`
+    <h2>거래 완료</h2>
+    <article class="choice-card">
+      <h3>${label} 흥정</h3>
+      <p>${getIngredientName(activity.offer.ingredientId)} ${added}개를 ${cost}코인에 들여왔습니다.</p>
+      <p>${bonusQuantity ? "보너스 수량 1개를 함께 받았습니다." : "다음 시장에서는 더 정확한 타이밍을 노려보세요."}</p>
+      <button type="button" data-market-close="true">계속 보기</button>
+    </article>
+  `, { returnTo: "resume-game" });
+  const closeButton = dom.modalContent.querySelector("[data-market-close]");
+  if (closeButton) closeButton.addEventListener("click", openMarketRegion);
+}
+
+function openForestRegion() {
+  if (state.gameMode !== "career") return;
+  openModal(`
+    <h2>버섯 숲</h2>
+    <p>반짝였던 채집 포인트를 기억해서 눌러보세요. 많이 맞힐수록 무료 재료와 희귀 숲 재료를 가져옵니다.</p>
+    <article class="choice-card">
+      <h3>채집 준비 완료</h3>
+      <p>운영 일수가 늘수록 기억해야 할 포인트가 조금씩 늘어납니다.</p>
+      <button type="button" data-forest-start="true">채집 시작</button>
+    </article>
+  `, { returnTo: "resume-game" });
+  const startButton = dom.modalContent.querySelector("[data-forest-start]");
+  if (startButton) startButton.addEventListener("click", startForestForageGame);
+}
+
+function startForestForageGame() {
+  clearRegionActivity();
+  const targetCount = Math.min(5, 3 + Math.floor(state.day / 3));
+  const positions = Array.from({ length: 9 }, (_, index) => index).sort(() => Math.random() - 0.5).slice(0, targetCount);
+  state.regionActivity = {
+    type: "forest",
+    phase: "memorize",
+    targets: positions,
+    chosen: [],
+    mistakes: 0,
+  };
+  renderForestForageGame();
+  state.regionActivity.timeoutId = setTimeout(() => {
+    if (!state.regionActivity || state.regionActivity.type !== "forest") return;
+    state.regionActivity.phase = "guess";
+    renderForestForageGame();
+  }, 1400);
+}
+
+function renderForestForageGame() {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "forest") return;
+  const tiles = Array.from({ length: 9 }, (_, index) => {
+    const revealed = activity.phase === "memorize" && activity.targets.includes(index);
+    const chosen = activity.chosen.includes(index);
+    return `
+      <button
+        type="button"
+        class="forage-tile ${revealed ? "forage-tile-revealed" : ""} ${chosen ? "forage-tile-chosen" : ""}"
+        data-forest-tile="${index}"
+        ${activity.phase !== "guess" || chosen ? "disabled" : ""}
+      >${revealed || chosen ? "✦" : "?"}</button>
+    `;
+  }).join("");
+  dom.modalContent.innerHTML = `
+    <h2>숲 채집</h2>
+    <p>${activity.phase === "memorize" ? "반짝이는 포인트를 기억하세요." : `정답 ${activity.targets.length}개 중 ${activity.chosen.filter((index) => activity.targets.includes(index)).length}개 발견 · 실수 ${activity.mistakes}/2`}</p>
+    <div class="forage-grid">${tiles}</div>
+  `;
+  dom.modalContent.querySelectorAll("[data-forest-tile]").forEach((button) => {
+    button.addEventListener("click", () => chooseForestTile(Number(button.dataset.forestTile)));
+  });
+}
+
+function chooseForestTile(index) {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "forest" || activity.phase !== "guess") return;
+  activity.chosen.push(index);
+  if (!activity.targets.includes(index)) {
+    activity.mistakes += 1;
+    playFail();
+  } else {
+    playWork();
+  }
+  const correctCount = activity.chosen.filter((tile) => activity.targets.includes(tile)).length;
+  if (correctCount >= activity.targets.length || activity.mistakes >= 2 || activity.chosen.length >= activity.targets.length + 2) {
+    finishForestForageGame();
+    return;
+  }
+  renderForestForageGame();
+}
+
+function finishForestForageGame() {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "forest") return;
+  const correctCount = activity.chosen.filter((tile) => activity.targets.includes(tile)).length;
+  const herbAdded = addInventoryAmount("forest-herb", Math.max(1, correctCount - 1));
+  const mushroomAdded = addInventoryAmount("mushroom", Math.max(1, Math.floor(correctCount / 2)));
+  const berryAdded = correctCount >= activity.targets.length - 1 ? addInventoryAmount("dew-berry", 1) : 0;
+  clearRegionActivity();
+  playCoin();
+  updateHud();
+  saveProgress();
+  openModal(`
+    <h2>채집 완료</h2>
+    <article class="choice-card">
+      <h3>${correctCount}/${activity.targets.length} 포인트 발견</h3>
+      <p>숲 허브 ${herbAdded}개, 버섯 ${mushroomAdded}개${berryAdded ? `, 이슬 베리 ${berryAdded}개` : ""}를 얻었습니다.</p>
+      <button type="button" data-forest-close="true">한 번 더 보기</button>
+    </article>
+  `, { returnTo: "resume-game" });
+  const closeButton = dom.modalContent.querySelector("[data-forest-close]");
+  if (closeButton) closeButton.addEventListener("click", openForestRegion);
+}
+
+function openGreenhouseRegion() {
+  if (state.gameMode !== "career") return;
+  if (!state.careerData) state.careerData = createCareerData({ day: state.day });
+  const beds = state.careerData.greenhouse.map((bed, index) => renderGreenhouseBedCard(bed, index)).join("");
+  openModal(`
+    <h2>옥상 온실</h2>
+    <p>화분을 심고 관리해 식당에서 쓸 재료를 길러냅니다. 운영이 한 번 지날 때마다 작물이 조금씩 자랍니다.</p>
+    <div class="grid-list greenhouse-grid">${beds}</div>
+  `, { returnTo: "resume-game" });
+
+  dom.modalContent.querySelectorAll("[data-greenhouse-plant]").forEach((button) => {
+    button.addEventListener("click", () => {
+      plantGreenhouseCrop(Number(button.dataset.greenhousePlant), button.dataset.cropId);
+      openGreenhouseRegion();
+    });
+  });
+  dom.modalContent.querySelectorAll("[data-greenhouse-manage]").forEach((button) => {
+    button.addEventListener("click", () => startGreenhouseCareGame(Number(button.dataset.greenhouseManage)));
+  });
+  dom.modalContent.querySelectorAll("[data-greenhouse-harvest]").forEach((button) => {
+    button.addEventListener("click", () => {
+      harvestGreenhouseCrop(Number(button.dataset.greenhouseHarvest));
+      openGreenhouseRegion();
+    });
+  });
+}
+
+function renderGreenhouseBedCard(bed, index) {
+  if (!bed.cropId) {
+    const cropButtons = GREENHOUSE_CROPS
+      .filter((crop) => state.day >= crop.unlockDay)
+      .map((crop) => `<button type="button" data-greenhouse-plant="${index}" data-crop-id="${crop.ingredientId}">${crop.name}</button>`)
+      .join("");
+    return `
+      <article class="choice-card greenhouse-card">
+        <h3>${index + 1}번 화분</h3>
+        <p>비어 있습니다. 심을 작물을 골라보세요.</p>
+        <div class="stack-buttons">${cropButtons || "<p>아직 심을 수 있는 작물이 없습니다.</p>"}</div>
+      </article>
+    `;
+  }
+
+  const crop = GREENHOUSE_CROPS.find((item) => item.ingredientId === bed.cropId);
+  const stageLabel = bed.ready ? "수확 가능" : `${bed.stage}/2 단계`;
+  return `
+    <article class="choice-card greenhouse-card">
+      <h3>${index + 1}번 화분 · ${crop?.name || getIngredientName(bed.cropId)}</h3>
+      <p>성장 ${stageLabel} · 관리 점수 ${bed.quality}</p>
+      <div class="mode-actions">
+        ${bed.ready
+          ? `<button type="button" data-greenhouse-harvest="${index}">수확하기</button>`
+          : `<button type="button" data-greenhouse-manage="${index}">관리하기</button>`}
+      </div>
+    </article>
+  `;
+}
+
+function plantGreenhouseCrop(index, cropId) {
+  const bed = state.careerData?.greenhouse?.[index];
+  if (!bed) return;
+  bed.cropId = cropId;
+  bed.stage = 0;
+  bed.quality = 0;
+  bed.ready = false;
+  bed.lastManagedDay = state.day;
+  playWork();
+  saveProgress();
+  showToast(`${getIngredientName(cropId)} 화분을 심었습니다.`);
+}
+
+function startGreenhouseCareGame(index) {
+  const bed = state.careerData?.greenhouse?.[index];
+  if (!bed || !bed.cropId) return;
+  clearRegionActivity();
+  const needs = ["물", "빛", "환기"].sort(() => Math.random() - 0.5);
+  state.regionActivity = {
+    type: "greenhouse",
+    bedIndex: index,
+    needs,
+    step: 0,
+    correct: 0,
+  };
+  renderGreenhouseCareGame();
+}
+
+function renderGreenhouseCareGame() {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "greenhouse") return;
+  const currentNeed = activity.needs[activity.step];
+  dom.modalContent.innerHTML = `
+    <h2>온실 관리</h2>
+    <p>작물 상태를 보고 가장 필요한 관리를 골라주세요. ${activity.step + 1}/3 단계입니다.</p>
+    <article class="choice-card">
+      <h3>지금 가장 필요한 것: ${currentNeed}</h3>
+      <div class="pause-grid">
+        <button type="button" data-greenhouse-action="물">물 주기</button>
+        <button type="button" data-greenhouse-action="빛">빛 조절</button>
+        <button type="button" data-greenhouse-action="환기">환기 열기</button>
+      </div>
+    </article>
+  `;
+  dom.modalContent.querySelectorAll("[data-greenhouse-action]").forEach((button) => {
+    button.addEventListener("click", () => chooseGreenhouseAction(button.dataset.greenhouseAction));
+  });
+}
+
+function chooseGreenhouseAction(action) {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "greenhouse") return;
+  if (action === activity.needs[activity.step]) {
+    activity.correct += 1;
+    playWork();
+  } else {
+    playFail();
+  }
+  activity.step += 1;
+  if (activity.step >= activity.needs.length) {
+    finishGreenhouseCareGame();
+    return;
+  }
+  renderGreenhouseCareGame();
+}
+
+function finishGreenhouseCareGame() {
+  const activity = state.regionActivity;
+  if (!activity || activity.type !== "greenhouse") return;
+  const bed = state.careerData?.greenhouse?.[activity.bedIndex];
+  if (!bed) return;
+  bed.quality += activity.correct;
+  bed.lastManagedDay = state.day;
+  if (activity.correct >= 2) {
+    bed.stage = Math.min(2, bed.stage + 1);
+  }
+  if (bed.stage >= 2) bed.ready = true;
+  clearRegionActivity();
+  saveProgress();
+  showToast(activity.correct >= 2 ? "작물 상태가 좋아졌습니다." : "조금 더 세심한 관리가 필요합니다.");
+  openGreenhouseRegion();
+}
+
+function harvestGreenhouseCrop(index) {
+  const bed = state.careerData?.greenhouse?.[index];
+  if (!bed?.cropId || !bed.ready) return;
+  const crop = GREENHOUSE_CROPS.find((item) => item.ingredientId === bed.cropId);
+  const amount = (crop?.yieldAmount || 2) + Math.min(2, Math.floor(bed.quality / 2));
+  const added = addInventoryAmount(bed.cropId, amount);
+  if (added <= 0) {
+    playFail();
+    showToast("냉장고가 가득 차 수확물을 담을 수 없습니다.");
+    return;
+  }
+  bed.cropId = null;
+  bed.stage = 0;
+  bed.quality = 0;
+  bed.ready = false;
+  bed.lastManagedDay = state.day;
+  playCoin();
+  saveProgress();
+  updateHud();
+  showToast(`${getIngredientName(crop?.ingredientId || "")} ${added}개를 수확했습니다.`);
 }
 
 async function openChallengeLeaderboardModal() {
@@ -1611,6 +2345,55 @@ async function openChallengeLeaderboardModal() {
     ${personalCard}
     <div class="scoreboard-list">${rows}</div>
   `;
+}
+
+async function showChallengeLeaderboardScreen() {
+  dom.challengeLbContent.innerHTML = "";
+  dom.challengeLbSummary.innerHTML = "";
+  dom.challengeLbScreen.classList.remove("hidden");
+
+  const stats = state.serviceStats;
+  if (stats?.completedOrders) {
+    const totalScore = getChallengeRunScore();
+    dom.challengeLbSummary.innerHTML = [
+      `<span class="challenge-lb-stat">완료 ${stats.completedOrders}개</span>`,
+      `<span class="challenge-lb-stat">누적 ${totalScore}점</span>`,
+      `<span class="challenge-lb-stat">최고 ${stats.bestScore}점</span>`,
+    ].join("");
+  }
+
+  const { entries, personal, error } = await fetchChallengeLeaderboard();
+
+  if (error) {
+    dom.challengeLbContent.innerHTML = `<article class="mode-card"><p>${error}</p></article>`;
+    return;
+  }
+
+  const personalCard = personal ? `
+    <article class="mode-card">
+      <h3 style="margin:0;font-size:18px;font-weight:900;opacity:0.7">내 최고 기록</h3>
+      <p>${personal.nickname} · 완료 ${personal.completedOrders}개 · 누적 ${personal.challengeScore}점 · 최고 ${personal.bestDishScore}점</p>
+    </article>` : "";
+
+  const rows = entries.length
+    ? entries.map((entry, i) => `
+        <div class="scoreboard-row ${entry.userId === state.authUser?.id ? "player-score-row" : ""}">
+          <strong>${i + 1}등</strong>
+          <span>${entry.nickname}</span>
+          <b>${entry.completedOrders}개 · ${entry.challengeScore}점</b>
+          <em>최고 ${entry.bestDishScore}점</em>
+        </div>`).join("")
+    : `<article class="mode-card"><p>아직 등록된 기록이 없습니다. 제한 시간 안에 주문을 완성해 첫 기록을 남겨보세요.</p></article>`;
+
+  dom.challengeLbContent.innerHTML = personalCard + `<div class="scoreboard-list">${rows}</div>`;
+}
+
+function exitChallengeLeaderboardScreen() {
+  dom.challengeLbScreen.classList.add("hidden");
+  dom.startScreen.classList.remove("hidden");
+  dom.startScreen.classList.add("screen-visible");
+  refreshStartActions();
+  syncAuthUi();
 }
 
 function openHistoryModal() {
@@ -2114,6 +2897,7 @@ async function startGame() {
   state.orderIndex = 0;
   state.serviceStats = null;
   state.currentQuest = null;
+  state.lastChallengeQuestId = null;
   state.pendingDish = null;
   state.lastJudgement = null;
   state.minigame = null;
@@ -2126,10 +2910,11 @@ async function startGame() {
   clearCrates();
   playerCarryMesh.visible = false;
   dom.resultScreen.classList.add("hidden");
+  dom.challengeLbScreen.classList.add("hidden");
   resetServiceDay();
   resetMusicPlayback();
   startRunningDay();
-  showToast(`챌린지 시작: ${getTargetRecipe().name} · ${getCustomerPreference().name}`);
+  showToast(`챌린지 시작: ${getTargetRecipe().name} · ${getCustomerPreference().name} · 게시판에서 첫 일을 받으세요.`);
 }
 
 function startCareerGame() {
@@ -2150,6 +2935,7 @@ function startCareerGame() {
     recipeRecords: {},
     reputation: 0,
     upgrades: {},
+    careerData: createCareerData({ day: 0 }),
     activeDay: null,
   };
   state.coins = 35;
@@ -2160,6 +2946,7 @@ function startCareerGame() {
   state.reputation = 0;
   state.upgrades = {};
   state.careerStats = createCareerStats();
+  state.careerData = createCareerData({ day: 0 });
   state.savedActiveDay = null;
   state.dailyEvent = null;
   state.orderQueue = [];
@@ -2204,6 +2991,7 @@ function continueCareerGame() {
     closeModal();
     return;
   }
+  if (!state.careerData) state.careerData = createCareerData({ day: state.day });
   if (!restoreCareerProgress()) resetServiceDay();
   startRunningDay();
   showToast(`${state.day}일차 운영 재개: ${getTargetRecipe().name}`);
@@ -2396,6 +3184,7 @@ function startRunningDay() {
   ensureAudio();
   playClick();
   startMusic();
+  applyCareerRegionState();
   updateEventVisuals();
   updateHelperVisibility();
   updateHud();
@@ -2429,6 +3218,11 @@ function animate() {
     animateMarkers(dt);
     updateHelperHamster(dt);
     updateTutorialGuide();
+    updateQuestArrow();
+    checkMopProgress();
+    if (questArrow?.visible) {
+      questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
+    }
   }
 
   updateCamera(dt);
@@ -2550,6 +3344,102 @@ function updateHelperVisibility() {
   if (helperHamster) helperHamster.visible = state.running && getUpgradeLevel("assistant") > 0;
 }
 
+function setStationPresentation(station, { label, color, marker, action, disabled = false }) {
+  if (!station) return;
+  station.label = label || station.defaultLabel;
+  station.action = action || station.defaultAction;
+  station.disabled = disabled;
+  station.base.material.color.set(color || station.defaultColor);
+  station.markerMesh.material.color.set(marker || station.defaultMarker);
+  if (station.labelBoard) {
+    station.group.remove(station.labelBoard);
+  }
+  station.labelBoard = makeLabelBoard(station.label, color || station.defaultColor, "#fff8e8");
+  station.labelBoard.position.set(0, 1.65, 0);
+  station.group.add(station.labelBoard);
+}
+
+function resetRestaurantStations() {
+  Object.values(stations).forEach((station) => {
+    if (station.group) station.group.visible = true;
+    setStationPresentation(station, {
+      label: station.defaultLabel,
+      color: station.defaultColor,
+      marker: station.defaultMarker,
+      action: station.defaultAction,
+      disabled: false,
+    });
+  });
+}
+
+function applyChallengeStationState() {
+  if (state.gameMode !== "challenge" || state.tutorialMode) return;
+  [stations.upgrade].forEach((station) => {
+    if (!station) return;
+    station.disabled = true;
+    if (station.group) station.group.visible = false;
+  });
+}
+
+function applyCareerRegionState() {
+  if (state.gameMode !== "career") {
+    resetRestaurantStations();
+    if (worldObjects.regionDecor) {
+      Object.values(worldObjects.regionDecor).forEach((group) => {
+        group.visible = false;
+      });
+    }
+    applyChallengeStationState();
+    return;
+  }
+
+  if (!state.careerData) state.careerData = createCareerData({ day: state.day });
+  const region = getCareerRegion();
+  if (worldObjects.regionDecor) {
+    Object.entries(worldObjects.regionDecor).forEach(([id, group]) => {
+      group.visible = id === region.id;
+    });
+  }
+
+  resetRestaurantStations();
+  if (region.id === "restaurant") return;
+
+  setStationPresentation(stations.board, {
+    label: "지역 지도",
+    color: "#5e426d",
+    marker: "#f5c84b",
+    action: openCareerMapModal,
+  });
+
+  if (region.id === "market") {
+    setStationPresentation(stations.shop, {
+      label: "시장 흥정",
+      color: "#c77c4a",
+      marker: "#f5c84b",
+      action: openMarketRegion,
+    });
+  } else if (region.id === "forest") {
+    setStationPresentation(stations.shop, {
+      label: "숲 채집",
+      color: "#4a995b",
+      marker: "#fff8e8",
+      action: openForestRegion,
+    });
+  } else if (region.id === "greenhouse") {
+    setStationPresentation(stations.shop, {
+      label: "온실 관리",
+      color: "#4e9a88",
+      marker: "#fff8e8",
+      action: openGreenhouseRegion,
+    });
+  }
+
+  [stations.upgrade, stations.kitchen, stations.judge, stations.sink, stations.counter, stations.shelf].forEach((station) => {
+    if (!station) return;
+    station.disabled = true;
+  });
+}
+
 function updateEventVisuals() {
   const eventName = state.dailyEvent?.name || "";
   let sky = "#8bd4d0";
@@ -2567,6 +3457,11 @@ function updateEventVisuals() {
     sky = "#f0b574";
     fog = "#f0b574";
   }
+  if (state.gameMode === "career") {
+    const region = getCareerRegion();
+    sky = region.sky;
+    fog = region.fog;
+  }
   scene.background = new THREE.Color(sky);
   scene.fog = new THREE.Fog(fog, 20, 46);
   document.body.dataset.event = eventName;
@@ -2580,6 +3475,41 @@ function interact() {
 }
 
 function openQuestBoard() {
+  if (state.gameMode === "challenge") {
+    const busy = state.currentQuest && !state.currentQuest.completed;
+    if (busy) {
+      openModal(`
+        <h2>일 게시판</h2>
+        <p>현재 진행 중인 랜덤 일을 먼저 마무리하세요.</p>
+        <article class="choice-card">
+          <h3>${state.currentQuest.name}</h3>
+          <p>${state.currentQuest.detail}</p>
+          <p><strong>보상 ${state.currentQuest.pay}코인</strong></p>
+          <button type="button" data-open-history="true">기록 보기</button>
+        </article>
+      `);
+      const historyButton = dom.modalContent.querySelector("[data-open-history]");
+      if (historyButton) historyButton.addEventListener("click", openHistoryModal);
+      return;
+    }
+
+    assignRandomChallengeQuest({ excludeId: state.lastChallengeQuestId });
+    closeModal(false, true);
+    openModal(`
+      <h2>일 게시판</h2>
+      <p>오늘의 잡일이 랜덤으로 배정되었습니다.</p>
+      <article class="choice-card">
+        <h3>${state.currentQuest.name}</h3>
+        <p>${state.currentQuest.detail}</p>
+        <p><strong>보상 ${state.currentQuest.pay}코인</strong></p>
+        <button type="button" data-close-board="true">확인</button>
+      </article>
+    `);
+    const closeButton = dom.modalContent.querySelector("[data-close-board]");
+    if (closeButton) closeButton.addEventListener("click", () => closeModal());
+    return;
+  }
+
   const busy = state.currentQuest && !state.currentQuest.completed;
   openModal(`
     <h2>일 게시판</h2>
@@ -2615,7 +3545,7 @@ function openQuestBoard() {
   if (historyButton) historyButton.addEventListener("click", openHistoryModal);
 }
 
-function startQuest(id) {
+function startQuest(id, options = {}) {
   const quest = QUESTS.find((item) => item.id === id);
   if (!quest) return;
 
@@ -2659,8 +3589,61 @@ function startQuest(id) {
     spawnCrates();
   }
 
+  if (id === "sort") {
+    const pool = INGREDIENTS.slice(0, 8);
+    const queue = Array.from({ length: 10 }, () => ({
+      ingredient: pool[Math.floor(Math.random() * pool.length)],
+      spoiled: false,
+    }));
+    const spoiledSet = new Set();
+    while (spoiledSet.size < 3) spoiledSet.add(Math.floor(Math.random() * queue.length));
+    queue.forEach((item, i) => { if (spoiledSet.has(i)) item.spoiled = true; });
+    state.currentQuest = {
+      id, name: quest.name, pay: quest.pay,
+      queue, currentIdx: 0, lives: 3, itemTimer: 100, frameId: null, judging: false,
+      detail: "재료 선반에서 상한 재료를 골라내세요",
+    };
+  }
+
+  if (id === "mop") {
+    state.currentQuest = {
+      id, name: quest.name, pay: quest.pay,
+      progress: 0, total: 5,
+      detail: "바닥 얼룩을 밟아 닦아내세요. (5개)",
+    };
+    spawnStains();
+  }
+
+  if (id === "water") {
+    state.currentQuest = {
+      id, name: quest.name, pay: quest.pay,
+      plants: Array.from({ length: 4 }, (_, i) => ({
+        level: 15 + Math.floor(Math.random() * 30),
+        dryRate: [0.04, 0.06, 0.05, 0.07][i],
+        overflowed: false,
+      })),
+      selectedPlant: 0,
+      frameId: null,
+      detail: "상점에서 화분에 물을 주세요.",
+    };
+  }
+
   updateHud();
-  showToast(`${quest.name}을 시작했습니다.`);
+  if (options.toast !== false) showToast(`${quest.name}을 시작했습니다.`);
+}
+
+function pickRandomChallengeQuestId(excludeId = null) {
+  const pool = CHALLENGE_QUEST_IDS.filter((id) => id !== excludeId);
+  const source = pool.length ? pool : CHALLENGE_QUEST_IDS;
+  return source[Math.floor(Math.random() * source.length)] || null;
+}
+
+function assignRandomChallengeQuest(options = {}) {
+  if (state.gameMode !== "challenge" || state.tutorialMode) return;
+  const nextId = pickRandomChallengeQuestId(options.excludeId || null);
+  if (!nextId) return;
+  startQuest(nextId, { toast: false });
+  if (options.toast !== false) showToast(`이번 일: ${state.currentQuest?.name}`);
 }
 
 function handleSink() {
@@ -2922,6 +3905,56 @@ function makeErrandOrder() {
   };
 }
 
+function renderOrderDishImage(dishName, extraClass = "") {
+  const artClassName = ["order-dish-art", extraClass].filter(Boolean).join(" ");
+  let content = "";
+  if (dishName === "별빛 크림 스튜") {
+    content = `
+      <div class="order-dish-stew">
+        <span class="stew-swirl"></span>
+        <span class="stew-leaf"></span>
+        <span class="stew-star"></span>
+      </div>
+    `;
+  } else if (dishName === "숲속 버섯 플레이트") {
+    content = `
+      <div class="order-dish-mushroom-plate">
+        <span class="mushroom-cap mushroom-cap-large"></span>
+        <span class="mushroom-cap mushroom-cap-small"></span>
+        <span class="mushroom-stem mushroom-stem-large"></span>
+        <span class="mushroom-stem mushroom-stem-small"></span>
+        <span class="forest-herb-leaf"></span>
+      </div>
+    `;
+  } else if (dishName === "당근 크림볼") {
+    content = `
+      <div class="order-dish-carrot-bowl">
+        <span class="carrot-ball carrot-ball-left"></span>
+        <span class="carrot-ball carrot-ball-center"></span>
+        <span class="carrot-ball carrot-ball-right"></span>
+        <span class="carrot-leaf"></span>
+      </div>
+    `;
+  } else {
+    const ingredientIds = ORDER_DISH_ART[dishName] || ["cream", "cheese", "herb"];
+    content = ingredientIds
+      .map((id) => INGREDIENTS.find((ingredient) => ingredient.id === id))
+      .filter(Boolean)
+      .map((ingredient) => `
+        <div class="order-dish-dot" style="background:${ingredient.color}"></div>
+      `)
+      .join("");
+    content = `<div class="order-dish-food">${content}</div>`;
+  }
+  return `
+    <div class="${artClassName}" aria-hidden="true">
+      <div class="order-dish-plate">
+        ${content}
+      </div>
+    </div>
+  `;
+}
+
 function openOrderDelivery() {
   const quest = state.currentQuest;
   if (!quest || quest.id !== "errand") return;
@@ -2945,7 +3978,11 @@ function renderOrderMemory() {
     <p>손님 주문을 외운 뒤 주문표를 접습니다. 이후에는 원본이 가려지고, 비슷한 후보 중 같은 주문표를 골라야 합니다.</p>
     <article class="order-memory-card">
       <span>손님 주문</span>
-      <strong>${quest.order.table}번 테이블 · ${quest.order.dish}</strong>
+      <div class="order-memory-row">
+        <strong>${quest.order.table}번 테이블</strong>
+        ${renderOrderDishImage(quest.order.dish, "order-dish-art-large")}
+      </div>
+      <b>${quest.order.dish}</b>
       <p>${quest.order.request}</p>
     </article>
     <article class="choice-card order-briefing">
@@ -2992,8 +4029,9 @@ function renderOrderChoices() {
         .map(
           (option, index) => `
           <article class="choice-card order-ticket">
-            <h3>${option.table}번 테이블</h3>
-            <p>${option.dish}</p>
+            <span class="order-ticket-table">${option.table}번 테이블</span>
+            ${renderOrderDishImage(option.dish)}
+            <h3>${option.dish}</h3>
             <p>${option.request}</p>
             <button type="button" data-order-option="${index}">전달</button>
           </article>
@@ -3104,16 +4142,18 @@ function chooseOrderTicket(option, button) {
 }
 
 function failOrderDelivery(reason) {
+  const failedQuestId = state.currentQuest?.id || "errand";
   clearOrderChallengeTimer();
   playFail();
   state.currentQuest = null;
+  state.lastChallengeQuestId = failedQuestId;
   updateHud();
   openModal(`
     <h2>주문 전달 실패</h2>
     <p>${reason} 이번 주문은 보상을 받을 수 없습니다.</p>
     <article class="choice-card">
-      <h3>다시 시도 가능</h3>
-      <p>일 게시판에서 주문표 전달을 다시 수락하면 새 주문으로 도전할 수 있습니다.</p>
+      <h3>다시 게시판으로</h3>
+      <p>일 게시판에서 상호작용해 다음 랜덤 일을 받아보세요.</p>
       <button type="button" data-close-order="true">닫기</button>
     </article>
   `);
@@ -3123,6 +4163,7 @@ function failOrderDelivery(reason) {
 
 function handleShelf() {
   const quest = state.currentQuest;
+  if (quest?.id === "sort") { openSortQuest(); return; }
   if (!quest || quest.id !== "stock") {
     showToast("선반은 조용히 정리되어 있습니다.");
     return;
@@ -3136,7 +4177,7 @@ function handleShelf() {
   quest.carrying = false;
   playerCarryMesh.visible = false;
   quest.progress += 1;
-  playWork();
+  playPaper();
 
   if (quest.progress >= quest.total) {
     completeQuest();
@@ -3191,7 +4232,7 @@ function pickCrate(crate) {
   quest.carrying = true;
   playerCarryMesh.visible = true;
   quest.detail = "선반에 상자를 올려두세요.";
-  playWork();
+  playPaper();
   updateHud();
 }
 
@@ -3205,6 +4246,316 @@ function clearCrates() {
   worldObjects.crates = [];
 }
 
+function spawnStains() {
+  clearStains();
+  const obstacles = [
+    [-7.8, -5.8], [7.4, -5.4], [4.6, -5.7], [3.8, 0.6],
+    [0, 5.6], [-7.4, 1.8], [-1.8, -1.2], [8, 2.5],
+    [-5.5, 3.25], [-2.2, 3.25], [2.2, 3.25], [5.5, 3.25],
+  ];
+  const isSafe = (x, z) =>
+    obstacles.every(([ox, oz]) => Math.hypot(x - ox, z - oz) > 2.4) &&
+    Math.abs(x) < 6.0 && z > -0.5 && z < 4.8;
+
+  const candidates = [];
+  for (let x = -5.5; x <= 5.5; x += 0.8) {
+    for (let z = 0.0; z <= 4.5; z += 0.8) {
+      if (isSafe(x, z)) candidates.push([x, z]);
+    }
+  }
+  candidates.sort(() => Math.random() - 0.5);
+  const chosen = candidates.slice(0, 5);
+
+  worldObjects.stains = chosen.map(([x, z]) => {
+    const m = mesh(new THREE.CircleGeometry(0.52, 14), mat("#a06820"), [x, 0.015, z]);
+    m.rotation.x = -Math.PI / 2;
+    m.renderOrder = 1;
+    scene.add(m);
+    const stainPos = new THREE.Vector3(x, 0, z);
+    let stainEntry;
+    const interactable = {
+      position: stainPos,
+      radius: 1.6,
+      label: "얼룩 닦기",
+      group: null,
+      markerMesh: null,
+      disabled: false,
+      action: () => mopStain(stainEntry),
+    };
+    stainEntry = { mesh: m, position: stainPos, interactable };
+    interactables.push(interactable);
+    return stainEntry;
+  });
+}
+
+function clearStains() {
+  if (!worldObjects.stains) return;
+  for (const s of worldObjects.stains) {
+    scene.remove(s.mesh);
+    if (s.interactable) {
+      const idx = interactables.indexOf(s.interactable);
+      if (idx >= 0) interactables.splice(idx, 1);
+    }
+  }
+  worldObjects.stains = [];
+}
+
+function mopStain(s) {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "mop") return;
+  scene.remove(s.mesh);
+  const sIdx = worldObjects.stains.indexOf(s);
+  if (sIdx >= 0) worldObjects.stains.splice(sIdx, 1);
+  const iIdx = interactables.indexOf(s.interactable);
+  if (iIdx >= 0) interactables.splice(iIdx, 1);
+  quest.progress += 1;
+  playWork();
+  if (quest.progress >= quest.total) {
+    completeQuest();
+  } else {
+    quest.detail = `얼룩 ${quest.progress}/${quest.total}개 제거`;
+    updateHud();
+  }
+}
+
+function checkMopProgress() {
+  // stains are now removed via interaction key — no-op
+}
+
+// ── 재료 선별 (sort) ─────────────────────────────────────
+
+function openSortQuest() {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "sort") return;
+
+  const item = quest.queue[quest.currentIdx];
+  if (!item) return;
+
+  const livesHtml = "❤️".repeat(quest.lives) + "🖤".repeat(3 - quest.lives);
+  const spoiledClass = item.spoiled ? " sort-belt-spoiled" : "";
+  const spoiledBadge = item.spoiled ? `<span class="sort-spoiled-badge">💨</span>` : "";
+  openModal(`
+    <h2>재료 선별</h2>
+    <p>신선한 재료는 통과, 상한 재료는 버리세요. <small>상한 재료는 빛이 바래고 💨 표시가 있어요.</small></p>
+    <div class="sort-belt-stage">
+      <div class="sort-belt-meta">
+        <span class="sort-belt-lives">${livesHtml}</span>
+        <span class="sort-progress-label">${quest.currentIdx + 1} / ${quest.queue.length}</span>
+      </div>
+      <div class="sort-belt-item${spoiledClass}" id="sort-belt-item">
+        ${spoiledBadge}
+        ${ingredientImage(item.ingredient)}
+        <span class="sort-name">${item.ingredient.name}</span>
+      </div>
+      <div class="sort-timer-bar">
+        <div class="sort-timer-fill" id="sort-timer-fill" style="width:${quest.itemTimer}%"></div>
+      </div>
+      <div class="sort-belt-actions">
+        <button type="button" class="sort-pass-btn" id="sort-pass">✓ 통과</button>
+        <button type="button" class="sort-reject-btn" id="sort-reject">✗ 버리기</button>
+      </div>
+    </div>
+  `);
+
+  dom.modalContent.querySelector("#sort-pass")?.addEventListener("click", () => judgeSortItem(false));
+  dom.modalContent.querySelector("#sort-reject")?.addEventListener("click", () => judgeSortItem(true));
+
+  if (!quest.frameId) animateSort();
+}
+
+function judgeSortItem(rejected) {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "sort" || quest.judging) return;
+  quest.judging = true;
+  cancelAnimationFrame(quest.frameId);
+  quest.frameId = null;
+
+  const item = quest.queue[quest.currentIdx];
+  const correct = rejected === item.spoiled;
+  if (!correct) {
+    quest.lives = Math.max(0, quest.lives - 1);
+    showToast(rejected ? "신선한 재료를 버렸어요!" : "상한 재료를 통과시켰어요!");
+  }
+
+  quest.currentIdx++;
+  quest.itemTimer = 100;
+  quest.judging = false;
+
+  if (quest.lives <= 0) {
+    closeModal();
+    showToast("실패! 다시 선반에서 도전해보세요.");
+    state.currentQuest = null;
+    updateHud();
+    return;
+  }
+
+  if (quest.currentIdx >= quest.queue.length) {
+    completeQuest();
+    closeModal();
+    return;
+  }
+
+  openSortQuest();
+}
+
+function animateSort() {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "sort" || !state.modalOpen) {
+    if (quest) quest.frameId = null;
+    return;
+  }
+
+  quest.itemTimer = Math.max(0, quest.itemTimer - 0.65);
+  const fill = dom.modalContent.querySelector("#sort-timer-fill");
+  if (fill) fill.style.width = `${quest.itemTimer}%`;
+
+  if (quest.itemTimer <= 0 && !quest.judging) {
+    judgeSortItem(false);
+    return;
+  }
+
+  quest.frameId = requestAnimationFrame(animateSort);
+}
+
+// ── 화분 물 주기 (water) ─────────────────────────────────
+
+const WATER_TARGET_MIN = 62;
+const WATER_TARGET_MAX = 87;
+const WATER_OVERFLOW = 95;
+const WATER_PLANT_EMOJI = ["🌵", "🌿", "🪴", "🌸"];
+
+function openWaterQuest() {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "water") return;
+
+  const plantsHtml = quest.plants.map((p, i) => {
+    const sel = quest.selectedPlant === i;
+    const inZone = p.level >= WATER_TARGET_MIN && p.level <= WATER_TARGET_MAX && !p.overflowed;
+    return `
+      <div class="water-plant${sel ? " water-plant-selected" : ""}" id="wplant-${i}">
+        <span class="water-label">${WATER_PLANT_EMOJI[i]}</span>
+        <div class="water-gauge-wrap${p.overflowed ? " water-overflow" : inZone ? " water-good" : ""}" id="wgauge-${i}">
+          <div class="water-gauge-fill${p.overflowed ? " water-overflow" : inZone ? " water-good" : ""}"
+               id="wfill-${i}" style="height:${Math.min(p.level, 100)}%"></div>
+          <div class="water-target-zone"
+               style="bottom:${WATER_TARGET_MIN}%;height:${WATER_TARGET_MAX - WATER_TARGET_MIN}%"></div>
+        </div>
+        <span class="water-pct" id="wpct-${i}">${Math.round(p.level)}%</span>
+      </div>`;
+  }).join("");
+
+  const allGood = quest.plants.every((p) => p.level >= WATER_TARGET_MIN && p.level <= WATER_TARGET_MAX && !p.overflowed);
+  const canAngle = (quest.selectedPlant / (quest.plants.length - 1) - 0.5) * 44;
+
+  openModal(`
+    <h2>화분 물 주기</h2>
+    <p>◀ ▶ 로 화분을 선택하고 <strong>물 따르기</strong> 버튼을 눌러 물을 주세요. 화분은 천천히 마릅니다.</p>
+    <div class="water-tilt-stage">
+      <div class="water-can" id="water-can" style="transform:rotate(${canAngle}deg)">🪣</div>
+      <div class="water-plants-row" id="water-plants-row">${plantsHtml}</div>
+      <div class="water-tilt-controls">
+        <button type="button" class="water-tilt-btn" id="water-tilt-left">◀</button>
+        <span id="water-selected-label">화분 ${quest.selectedPlant + 1}</span>
+        <button type="button" class="water-tilt-btn" id="water-tilt-right">▶</button>
+      </div>
+      <button type="button" class="water-pour-btn" id="water-pour">물 따르기 💧</button>
+    </div>
+    <p id="water-status" style="font-weight:800;margin:8px 0">${allGood ? "모두 좋아요! 완료를 눌러주세요." : "초록 구간에 맞추세요."}</p>
+    <div class="water-footer-actions">
+      <button type="button" id="water-complete" ${allGood ? "" : "disabled"}>완료</button>
+      <button type="button" class="water-reset-btn" id="water-reset">🔄 초기화</button>
+    </div>
+  `);
+
+  dom.modalContent.querySelector("#water-tilt-left")?.addEventListener("click", () => {
+    quest.selectedPlant = (quest.selectedPlant - 1 + quest.plants.length) % quest.plants.length;
+    updateWaterUI();
+  });
+  dom.modalContent.querySelector("#water-tilt-right")?.addEventListener("click", () => {
+    quest.selectedPlant = (quest.selectedPlant + 1) % quest.plants.length;
+    updateWaterUI();
+  });
+  dom.modalContent.querySelector("#water-pour")?.addEventListener("click", () => {
+    const p = quest.plants[quest.selectedPlant];
+    if (!p || p.overflowed) return;
+    p.level = Math.min(100, p.level + 14);
+    if (p.level >= WATER_OVERFLOW) { p.overflowed = true; p.level = 100; playFail(); }
+    else playWork();
+    const can = dom.modalContent.querySelector("#water-can");
+    if (can) {
+      can.classList.add("water-can-pour");
+      setTimeout(() => can?.classList.remove("water-can-pour"), 220);
+    }
+    updateWaterUI();
+  });
+  dom.modalContent.querySelector("#water-reset")?.addEventListener("click", () => {
+    quest.plants = Array.from({ length: 4 }, (_, i) => ({
+      level: 15 + Math.floor(Math.random() * 30),
+      dryRate: [0.04, 0.06, 0.05, 0.07][i],
+      overflowed: false,
+    }));
+    quest.selectedPlant = 0;
+    updateWaterUI();
+  });
+  dom.modalContent.querySelector("#water-complete")?.addEventListener("click", () => {
+    cancelAnimationFrame(quest.frameId);
+    quest.frameId = null;
+    completeQuest();
+    closeModal();
+  });
+
+  if (!quest.frameId) animateWater();
+}
+
+function updateWaterUI() {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "water") return;
+
+  const canAngle = (quest.selectedPlant / (quest.plants.length - 1) - 0.5) * 44;
+  const can = dom.modalContent.querySelector("#water-can");
+  if (can) can.style.transform = `rotate(${canAngle}deg)`;
+
+  const label = dom.modalContent.querySelector("#water-selected-label");
+  if (label) label.textContent = `화분 ${quest.selectedPlant + 1}`;
+
+  quest.plants.forEach((p, i) => {
+    const fill = dom.modalContent.querySelector(`#wfill-${i}`);
+    const gauge = dom.modalContent.querySelector(`#wgauge-${i}`);
+    const plant = dom.modalContent.querySelector(`#wplant-${i}`);
+    const pct = dom.modalContent.querySelector(`#wpct-${i}`);
+    if (!fill || !gauge || !plant) return;
+    const inZone = p.level >= WATER_TARGET_MIN && p.level <= WATER_TARGET_MAX && !p.overflowed;
+    const cls = p.overflowed ? " water-overflow" : inZone ? " water-good" : "";
+    fill.style.height = `${Math.min(p.level, 100)}%`;
+    fill.className = `water-gauge-fill${cls}`;
+    gauge.className = `water-gauge-wrap${cls}`;
+    plant.className = `water-plant${quest.selectedPlant === i ? " water-plant-selected" : ""}`;
+    if (pct) pct.textContent = `${Math.round(p.level)}%`;
+  });
+
+  const allGood = quest.plants.every((p) => p.level >= WATER_TARGET_MIN && p.level <= WATER_TARGET_MAX && !p.overflowed);
+  const completeBtn = dom.modalContent.querySelector("#water-complete");
+  const statusEl = dom.modalContent.querySelector("#water-status");
+  if (completeBtn) completeBtn.disabled = !allGood;
+  if (statusEl) statusEl.textContent = allGood ? "모두 좋아요! 완료를 눌러주세요." : "초록 구간에 맞추세요.";
+}
+
+function animateWater() {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "water" || !state.modalOpen) {
+    if (quest) quest.frameId = null;
+    return;
+  }
+
+  quest.plants.forEach((p) => {
+    if (p.overflowed) return;
+    p.level = Math.max(0, p.level - p.dryRate);
+  });
+
+  updateWaterUI();
+  quest.frameId = requestAnimationFrame(animateWater);
+}
+
 function completeQuest() {
   const quest = state.currentQuest;
   if (!quest) return;
@@ -3213,15 +4564,20 @@ function completeQuest() {
   state.coins += pay;
   if (state.serviceStats) state.serviceStats.coinsEarned += pay;
   state.currentQuest = null;
+  state.lastChallengeQuestId = quest.id;
   clearCrates();
+  clearStains();
+  if (quest.frameId) { cancelAnimationFrame(quest.frameId); quest.frameId = null; }
   playerCarryMesh.visible = false;
-  playCoin();
-  showToast(`일 완료! ${pay}코인을 받았습니다.`);
+  if (questArrow) questArrow.visible = false;
+  playRewardCoin();
+  showToast(`일 완료! ${pay}코인을 받았습니다.${state.gameMode === "challenge" ? " 게시판에서 다음 일을 받아보세요." : ""}`);
   updateHud();
   saveProgress();
 }
 
 function openShop() {
+  if (state.currentQuest?.id === "water") { openWaterQuest(); return; }
   const ingredients = getUnlockedIngredients();
   const lockedIngredients = INGREDIENTS.filter((ingredient) => !isUnlocked(ingredient));
   openModal(`
@@ -3381,7 +4737,7 @@ function getUpgradeCost(upgrade) {
 
 function isUnlocked(item) {
   if (state.gameMode === "career") return isCareerItemUnlocked(item);
-  return !item.unlockReputation || state.reputation >= item.unlockReputation;
+  return !item.careerOnly;
 }
 
 function getUnlockedIngredients() {
@@ -3401,7 +4757,7 @@ function getUnlockedUpgrades() {
 
 function getAvailableCustomerPreferences() {
   return CUSTOMER_PREFERENCES.filter((preference) => {
-    if (state.gameMode !== "career") return !preference.unlockCareerLevel;
+    if (state.gameMode !== "career") return true;
     return isCareerItemUnlocked(preference);
   });
 }
@@ -3412,6 +4768,16 @@ function getInventoryCount() {
 
 function getStorageLimit() {
   return BASE_STORAGE_LIMIT + getUpgradeLevel("fridge") * 4;
+}
+
+function addInventoryAmount(id, amount) {
+  const safeAmount = Math.max(0, Math.floor(amount));
+  if (!safeAmount) return 0;
+  const space = Math.max(0, getStorageLimit() - getInventoryCount());
+  const added = Math.min(space, safeAmount);
+  if (added <= 0) return 0;
+  state.inventory[id] = (state.inventory[id] || 0) + added;
+  return added;
 }
 
 function pickTargetRecipe() {
@@ -3438,6 +4804,8 @@ function resetServiceDay() {
     reputationEarned: 0,
     dishes: [],
   };
+  state.currentQuest = null;
+  state.lastChallengeQuestId = null;
 }
 
 function makeChallengeOrder(previousRecipeId = state.orderQueue.at(-1)?.recipe?.id || null) {
@@ -3461,10 +4829,14 @@ function queueNextChallengeOrder() {
 
 function resetCareerService() {
   const previousDay = state.day || 0;
+  if (!state.careerData) state.careerData = createCareerData({ day: previousDay });
   state.day = (state.day || 0) + 1;
   state.orderIndex = 0;
   state.helperCooldown = Math.max(0, 34 - getUpgradeLevel("assistant") * 5);
   state.dailyEvent = pickDailyEvent();
+  advanceGreenhouseBeds(Math.max(1, state.day - previousDay));
+  const newlyUnlockedRegions = unlockCareerRegions(previousDay, state.day);
+  ensureCareerMarketOffer();
   const recipe = pickTargetRecipe();
   state.orderQueue = [
     {
@@ -3488,13 +4860,14 @@ function resetCareerService() {
       dishes: [],
     };
   }
-  maybeShowCareerUnlocks(previousDay, state.day);
+  maybeShowCareerUnlocks(previousDay, state.day, newlyUnlockedRegions);
 }
 
-function maybeShowCareerUnlocks(previousDay, currentDay) {
+function maybeShowCareerUnlocks(previousDay, currentDay, unlockedRegions = []) {
   const unlockedRecipes = RECIPES.filter((recipe) => recipe.unlockDay && recipe.unlockDay > previousDay && recipe.unlockDay <= currentDay);
   const unlockedUpgrades = UPGRADES.filter((upgrade) => upgrade.careerOnly && upgrade.unlockDay && upgrade.unlockDay > previousDay && upgrade.unlockDay <= currentDay);
   const messages = [
+    ...unlockedRegions.map((region) => `새 지역 해금: ${region.name}`),
     ...unlockedRecipes.map((recipe) => `새 레시피 해금: ${recipe.name}`),
     ...unlockedUpgrades.map((upgrade) => `새 성장 업그레이드 해금: ${upgrade.name}`),
   ];
@@ -3586,9 +4959,50 @@ function getCareerNextLevelReputation() {
   return getCareerRestaurantLevel() * 35;
 }
 
+function getCareerRegion(id = state.careerData?.currentRegion || "restaurant") {
+  return CAREER_REGIONS.find((region) => region.id === id) || CAREER_REGIONS[0];
+}
+
+function getCareerRegionName(id = state.careerData?.currentRegion || "restaurant") {
+  return getCareerRegion(id).name;
+}
+
 function getCareerProgressSummary() {
   const stats = state.careerStats || createCareerStats();
-  return `식당 Lv.${getCareerRestaurantLevel()} · 총매출 ${stats.totalSales}코인 · 손님 ${stats.customersServed}명`;
+  return `${getCareerRegionName()} · 식당 Lv.${getCareerRestaurantLevel()} · 총매출 ${stats.totalSales}코인 · 손님 ${stats.customersServed}명`;
+}
+
+function unlockCareerRegions(previousDay = 0, currentDay = state.day || 0) {
+  if (!state.careerData) state.careerData = createCareerData({ day: currentDay });
+  const newlyUnlocked = [];
+  for (const region of CAREER_REGIONS) {
+    if (region.unlockDay > previousDay && region.unlockDay <= currentDay && !state.careerData.unlockedRegions.includes(region.id)) {
+      state.careerData.unlockedRegions.push(region.id);
+      newlyUnlocked.push(region);
+    }
+  }
+  state.careerData.lastUnlockCheckDay = Math.max(state.careerData.lastUnlockCheckDay || 0, currentDay);
+  return newlyUnlocked;
+}
+
+function isCareerRegionUnlocked(regionId) {
+  return Boolean(state.careerData?.unlockedRegions?.includes(regionId));
+}
+
+function ensureCareerMarketOffer() {
+  if (!state.careerData) state.careerData = createCareerData({ day: state.day });
+  if (!state.careerData.marketOffer || state.careerData.marketOffer.day !== state.day) {
+    state.careerData.marketOffer = createMarketOffer(state.day || 1);
+  }
+}
+
+function advanceGreenhouseBeds(dayDelta = 1) {
+  if (!state.careerData?.greenhouse?.length || dayDelta <= 0) return;
+  for (const bed of state.careerData.greenhouse) {
+    if (!bed.cropId || bed.ready) continue;
+    bed.stage = Math.min(2, bed.stage + dayDelta);
+    if (bed.stage >= 2) bed.ready = true;
+  }
 }
 
 function isCareerRecipeUnlocked(recipe) {
@@ -3624,6 +5038,18 @@ function getObjectiveSummary() {
   }
 
   if (state.gameMode === "career") {
+    const region = getCareerRegion();
+    if (region.id === "market") {
+      const offer = state.careerData?.marketOffer || createMarketOffer(state.day || 1);
+      return `${region.name}: ${getIngredientName(offer.ingredientId)} ${offer.quantity}개 묶음 흥정 가능 · ${getCareerProgressSummary()}`;
+    }
+    if (region.id === "forest") {
+      return `${region.name}: 채집 포인트를 기억해 무료 재료를 모으세요 · ${getCareerProgressSummary()}`;
+    }
+    if (region.id === "greenhouse") {
+      const readyCount = state.careerData?.greenhouse?.filter((bed) => bed.ready).length || 0;
+      return `${region.name}: 수확 가능 화분 ${readyCount}개 · ${getCareerProgressSummary()}`;
+    }
     return `${state.day}일차 손님: ${getTargetRecipe().name} ${getRequiredScore()}점 이상 · ${getCustomerPreference().name} · ${getCareerProgressSummary()}`;
   }
 
@@ -3850,37 +5276,26 @@ function countSelectedIngredients() {
 }
 
 function chooseCookingMiniGame() {
-  const games = ["timing", "heat", "chop"];
+  const games = ["timing", "heat", "chop", "bubble", "knead", "plating"];
   return games[Math.floor(Math.random() * games.length)];
 }
 
 function openCookingMiniGame() {
   if (!state.minigame?.active) return;
-
-  if (state.minigame.type === "heat") {
-    openHeatMinigame();
-    return;
-  }
-
-  if (state.minigame.type === "chop") {
-    openChopMinigame();
-    return;
-  }
-
+  const type = state.minigame.type;
+  if (type === "heat") { openHeatMinigame(); return; }
+  if (type === "chop") { openChopMinigame(); return; }
+  if (type === "bubble") { openBubbleMinigame(); return; }
+  if (type === "knead") { openKneadMinigame(); return; }
+  if (type === "plating") { openPlatingMinigame(); return; }
   openTimingMinigame();
 }
 
 function handleCookingMiniGameAction() {
   if (!state.minigame?.active) return;
-
-  if (state.minigame.type === "chop") {
-    chopIngredient();
-    return;
-  }
-
-  if (state.minigame.type === "timing") {
-    hitTimingBar();
-  }
+  const type = state.minigame.type;
+  if (type === "chop") { chopIngredient(); return; }
+  if (type === "timing") { hitTimingBar(); }
 }
 
 function openTimingMinigame() {
@@ -4176,6 +5591,291 @@ function finishChopMinigame() {
   finishCookingMinigame(score, minigame.results.map((result) => result.label));
 }
 
+// ── 물 끓이기 리듬 (bubble) ──────────────────────────────
+
+const BUBBLE_DURATION = 20;
+const BUBBLE_TARGET_MIN = 60;
+const BUBBLE_TARGET_MAX = 80;
+const BUBBLE_CRITICAL = 93;
+
+function openBubbleMinigame() {
+  Object.assign(state.minigame, {
+    temp: 38, heatRate: 1.4, coolEffect: 0, heatBoost: 0,
+    inZoneFrames: 0, totalFrames: 0,
+    timeLeft: BUBBLE_DURATION, done: false,
+    frameId: null, lastFrame: performance.now(),
+  });
+
+  openModal(`
+    <h2>물 끓이기</h2>
+    <p>${BUBBLE_TARGET_MIN}~${BUBBLE_TARGET_MAX}도 초록 구간을 유지하세요. 불을 조절해 온도를 맞추세요.</p>
+    <div class="bubble-temp-stage">
+      <div class="temp-gauge-wrap">
+        <div class="temp-gauge-track">
+          <div class="temp-critical-zone" style="bottom:${BUBBLE_CRITICAL}%;height:${100 - BUBBLE_CRITICAL}%"></div>
+          <div class="temp-target-zone" style="bottom:${BUBBLE_TARGET_MIN}%;height:${BUBBLE_TARGET_MAX - BUBBLE_TARGET_MIN}%"></div>
+          <div class="temp-fill" id="temp-fill" style="height:38%"></div>
+          <div class="temp-label" id="temp-label">38°</div>
+        </div>
+      </div>
+      <div class="bubble-controls-wrap">
+        <div class="bubble-countdown" id="bubble-countdown">20.0</div>
+        <div class="bubble-zone-rate" id="bubble-zone-rate">유지: 0%</div>
+        <div class="bubble-fire-btns">
+          <button type="button" class="bubble-heat-btn" id="bubble-heat-btn">🔥 불 키우기</button>
+          <button type="button" class="bubble-cool-btn" id="bubble-cool-btn">💧 불 줄이기</button>
+        </div>
+        <div class="bubble-cool-status" id="bubble-cool-status"></div>
+      </div>
+    </div>
+  `);
+
+  dom.modalContent.querySelector("#bubble-heat-btn")?.addEventListener("click", () => {
+    const mg = state.minigame;
+    if (!mg?.active || mg.type !== "bubble" || mg.done) return;
+    mg.heatBoost = 1.8;
+    mg.coolEffect = 0;
+    const st = dom.modalContent?.querySelector("#bubble-cool-status");
+    if (st) st.textContent = "가열 중… 🔥";
+  });
+
+  dom.modalContent.querySelector("#bubble-cool-btn")?.addEventListener("click", () => {
+    const mg = state.minigame;
+    if (!mg?.active || mg.type !== "bubble" || mg.done) return;
+    mg.coolEffect = 1.8;
+    mg.heatBoost = 0;
+    const st = dom.modalContent?.querySelector("#bubble-cool-status");
+    if (st) st.textContent = "냉각 중… 💧";
+  });
+
+  animateBubble();
+}
+
+function animateBubble() {
+  const mg = state.minigame;
+  if (!mg?.active || mg.type !== "bubble") return;
+  const now = performance.now();
+  const dt = Math.min((now - mg.lastFrame) / 1000, 0.05);
+  mg.lastFrame = now;
+  mg.timeLeft = Math.max(0, mg.timeLeft - dt);
+
+  mg.coolEffect = Math.max(0, mg.coolEffect - dt);
+  mg.heatBoost = Math.max(0, mg.heatBoost - dt);
+  const coolRate = 4.5;
+  const effective = mg.coolEffect > 0 ? -coolRate : mg.heatBoost > 0 ? mg.heatRate * 3.5 : mg.heatRate;
+  if (mg.coolEffect <= 0 && mg.heatBoost <= 0) {
+    const st = dom.modalContent?.querySelector("#bubble-cool-status");
+    if (st && st.textContent) st.textContent = "";
+  }
+
+  mg.temp = Math.max(0, Math.min(100, mg.temp + effective * dt));
+  if (mg.temp >= BUBBLE_CRITICAL) mg.temp = Math.max(BUBBLE_TARGET_MAX, mg.temp - dt * 6);
+
+  mg.totalFrames += 1;
+  const inZone = mg.temp >= BUBBLE_TARGET_MIN && mg.temp <= BUBBLE_TARGET_MAX;
+  if (inZone) mg.inZoneFrames += 1;
+
+  const fill = dom.modalContent?.querySelector("#temp-fill");
+  const label = dom.modalContent?.querySelector("#temp-label");
+  const countdown = dom.modalContent?.querySelector("#bubble-countdown");
+  const rate = dom.modalContent?.querySelector("#bubble-zone-rate");
+  if (fill) {
+    const cls = mg.temp >= BUBBLE_CRITICAL ? "temp-critical" : inZone ? "temp-good" : "";
+    fill.style.height = `${mg.temp}%`;
+    fill.className = `temp-fill ${cls}`;
+  }
+  if (label) label.textContent = `${Math.round(mg.temp)}°`;
+  if (countdown) countdown.textContent = mg.timeLeft.toFixed(1);
+  if (rate) rate.textContent = `유지: ${Math.round((mg.inZoneFrames / Math.max(1, mg.totalFrames)) * 100)}%`;
+
+  if (mg.timeLeft <= 0 && !mg.done) {
+    mg.done = true;
+    const ratio = mg.inZoneFrames / Math.max(1, mg.totalFrames);
+    const score = Math.round(ratio * 100);
+    const lbl = score >= 80 ? `완벽 (${score}%)` : score >= 60 ? `좋음 (${score}%)` : score >= 40 ? `보통 (${score}%)` : `아쉬움 (${score}%)`;
+    setTimeout(() => finishCookingMinigame(score, [lbl]), 400);
+    return;
+  }
+  mg.frameId = requestAnimationFrame(animateBubble);
+}
+
+function launchNextBubble() {} // deprecated
+function hitBubble() {}       // deprecated
+function recordBubbleResult() {} // deprecated
+
+// ── 반죽 치기 (knead) ────────────────────────────────────
+
+const KNEAD_DURATION = 10;
+
+function openKneadMinigame() {
+  Object.assign(state.minigame, {
+    mashCount: 0, timeLeft: KNEAD_DURATION, done: false,
+    frameId: null, lastFrame: performance.now(),
+  });
+
+  openModal(`
+    <h2>반죽 치기</h2>
+    <p>10초 안에 반죽을 최대한 많이 쳐주세요!</p>
+    <div class="knead-stage">
+      <div class="knead-countdown" id="knead-countdown">10.0</div>
+      <div class="knead-dough" id="knead-dough">🍞</div>
+      <div class="knead-mash-count" id="knead-mash-count">0</div>
+      <div class="knead-progress-bar">
+        <div id="knead-bar" class="knead-bar-fill" style="width:100%"></div>
+      </div>
+      <button type="button" id="knead-mash-btn" class="knead-btn knead-mash-btn">치기! 👊</button>
+    </div>
+  `);
+
+  dom.modalContent.querySelector("#knead-mash-btn")?.addEventListener("click", () => {
+    const mg = state.minigame;
+    if (!mg?.active || mg.type !== "knead" || mg.done) return;
+    mg.mashCount += 1;
+    playWork();
+    const dough = dom.modalContent?.querySelector("#knead-dough");
+    if (dough) { dough.classList.add("knead-hit"); setTimeout(() => dough?.classList.remove("knead-hit"), 90); }
+    const countEl = dom.modalContent?.querySelector("#knead-mash-count");
+    if (countEl) countEl.textContent = String(mg.mashCount);
+  });
+
+  animateKnead();
+}
+
+function animateKnead() {
+  const mg = state.minigame;
+  if (!mg?.active || mg.type !== "knead") return;
+  const now = performance.now();
+  const dt = Math.min((now - mg.lastFrame) / 1000, 0.05);
+  mg.lastFrame = now;
+  mg.timeLeft = Math.max(0, mg.timeLeft - dt);
+
+  const countdown = dom.modalContent?.querySelector("#knead-countdown");
+  const bar = dom.modalContent?.querySelector("#knead-bar");
+  if (countdown) countdown.textContent = mg.timeLeft.toFixed(1);
+  if (bar) bar.style.width = `${(mg.timeLeft / KNEAD_DURATION) * 100}%`;
+
+  if (mg.timeLeft <= 0 && !mg.done) {
+    mg.done = true;
+    const c = mg.mashCount;
+    const score = c >= 60 ? 100 : c >= 50 ? 80 : c >= 40 ? 60 : 40;
+    const label = c >= 60 ? `완벽 (${c}회)` : c >= 50 ? `좋음 (${c}회)` : c >= 40 ? `보통 (${c}회)` : `아쉬움 (${c}회)`;
+    setTimeout(() => finishCookingMinigame(score, [label]), 400);
+    return;
+  }
+
+  mg.frameId = requestAnimationFrame(animateKnead);
+}
+
+function pressKnead() {} // deprecated — kept to avoid reference errors
+
+// ── 플레이팅 (plating) ───────────────────────────────────
+
+function openPlatingMinigame() {
+  const recipe = getCurrentOrder().recipe;
+  const sorted = Object.entries(recipe.needs).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const items = sorted.map(([trait]) => ({ trait, label: TRAIT_LABELS[trait] || trait }));
+
+  Object.assign(state.minigame, {
+    platingItems: items, currentItem: 0, results: [],
+    itemY: -60, falling: false, caught: false,
+    frameId: null, lastFrame: performance.now(),
+  });
+
+  const queueHtml = items.map((it, i) =>
+    `<span class="${i === 0 ? "pf-current" : "pf-next"}" id="pf-q-${i}">${it.label}</span>`
+  ).join(" ›&nbsp;");
+
+  openModal(`
+    <h2>플레이팅</h2>
+    <p>재료가 접시 위에 왔을 때 <strong>담기!</strong> 버튼을 누르세요.</p>
+    <div class="plating-fall-stage">
+      <div class="plating-fall-track" id="pf-track">
+        <div class="plating-fall-item" id="pf-item" style="top:-60px">${items[0].label}</div>
+        <div class="plating-plate-zone">🍽️</div>
+        <div class="plating-hit-zone-marker"></div>
+      </div>
+      <div class="plating-fall-result" id="pf-result"></div>
+      <div class="plating-fall-queue">${queueHtml}</div>
+    </div>
+    <button type="button" class="plating-catch-btn" id="plating-catch-btn">담기! 🎯</button>
+  `);
+
+  dom.modalContent.querySelector("#plating-catch-btn")?.addEventListener("click", catchPlatingItem);
+  launchPlatingItem();
+}
+
+function launchPlatingItem() {
+  const mg = state.minigame;
+  if (!mg?.active || mg.type !== "plating") return;
+  mg.itemY = -60;
+  mg.falling = true;
+  mg.caught = false;
+  mg.lastFrame = performance.now();
+  const item = dom.modalContent?.querySelector("#pf-item");
+  if (item) {
+    item.textContent = mg.platingItems[mg.currentItem]?.label || "";
+    item.style.top = "-60px";
+    item.className = "plating-fall-item";
+  }
+  animatePlating();
+}
+
+function animatePlating() {
+  const mg = state.minigame;
+  if (!mg?.active || mg.type !== "plating" || !mg.falling) return;
+  const now = performance.now();
+  const dt = Math.min((now - mg.lastFrame) / 1000, 0.05);
+  mg.lastFrame = now;
+  mg.itemY += dt * 110;
+
+  const itemEl = dom.modalContent?.querySelector("#pf-item");
+  if (itemEl) itemEl.style.top = `${mg.itemY}px`;
+
+  if (mg.itemY > 310 && !mg.caught) {
+    recordPlatingResult({ label: "놓침", score: 20 });
+    return;
+  }
+  mg.frameId = requestAnimationFrame(animatePlating);
+}
+
+function catchPlatingItem() {
+  const mg = state.minigame;
+  if (!mg?.active || mg.type !== "plating" || !mg.falling || mg.caught) return;
+  mg.caught = true;
+  mg.falling = false;
+  cancelAnimationFrame(mg.frameId);
+  const y = mg.itemY;
+  let result;
+  if (y >= 175 && y <= 225) result = { label: "완벽", score: 100 };
+  else if (y >= 135 && y <= 265) result = { label: "좋음", score: 72 };
+  else result = { label: "빗나감", score: 25 };
+  const itemEl = dom.modalContent?.querySelector("#pf-item");
+  if (itemEl) itemEl.classList.add(result.score >= 100 ? "pf-perfect" : result.score >= 72 ? "pf-good" : "pf-miss");
+  recordPlatingResult(result);
+}
+
+function recordPlatingResult(result) {
+  const mg = state.minigame;
+  mg.results.push(result);
+  if (result.score >= 72) playSuccess(); else playFail();
+  const resultEl = dom.modalContent?.querySelector("#pf-result");
+  if (resultEl) {
+    resultEl.textContent = result.label;
+    resultEl.className = `plating-fall-result ${result.score >= 100 ? "perfect" : result.score >= 72 ? "good" : "miss"}`;
+  }
+  mg.currentItem += 1;
+  if (mg.currentItem >= mg.platingItems.length) {
+    const score = Math.round(mg.results.reduce((s, r) => s + r.score, 0) / mg.results.length);
+    setTimeout(() => finishCookingMinigame(score, mg.results.map((r) => r.label)), 700);
+    return;
+  }
+  const qEl = dom.modalContent?.querySelector(`#pf-q-${mg.currentItem - 1}`);
+  if (qEl) qEl.className = "pf-done";
+  const nextQEl = dom.modalContent?.querySelector(`#pf-q-${mg.currentItem}`);
+  if (nextQEl) nextQEl.className = "pf-current";
+  setTimeout(launchPlatingItem, 750);
+}
+
 function finishCookingMinigame(miniGameScore, resultLabels) {
   const minigame = state.minigame;
   if (!minigame) return;
@@ -4290,10 +5990,35 @@ function showScoreboard(dish, passed) {
   }
 
   dish.clearTime = dish.clearTime ?? getElapsedSeconds();
+
+  if (state.gameMode === "challenge") {
+    state.scoreboardConclusion = passed ? { dish, playerRank: 1 } : null;
+    const buttonText = passed ? "다음 주문 받기" : "다시 도전하기";
+    openModal(`
+      <h2>심사 결과</h2>
+      <article class="choice-card">
+        <h3>${dish.name}</h3>
+        <p style="font-size:2rem;font-weight:700;margin:0.25em 0">${dish.score}점</p>
+        <p>${passed ? "통과! 계속 이어갑니다." : `${dish.requiredScore || getRequiredScore()}점 이상이어야 통과합니다.`}</p>
+        <button type="button" data-scoreboard-close="true">${buttonText}</button>
+      </article>
+    `, { returnTo: passed ? "complete-order" : null });
+    const closeButton = dom.modalContent.querySelector("[data-scoreboard-close]");
+    closeButton.addEventListener("click", () => {
+      if (passed) {
+        finishPassedScoreboard();
+      } else {
+        closeModal();
+        showToast(`${dish.score}점 · 재료 조합을 다시 맞춰보세요.`);
+      }
+    });
+    return;
+  }
+
   const rankings = makeScoreboard(dish);
   const playerRank = rankings.findIndex((entry) => entry.isPlayer) + 1;
   const requiredScore = dish.requiredScore || getRequiredScore();
-  const isFinalOrder = state.gameMode !== "challenge" && state.orderIndex >= state.orderQueue.length - 1;
+  const isFinalOrder = state.orderIndex >= state.orderQueue.length - 1;
   const rows = rankings
     .map(
       (entry, index) => `
@@ -4307,9 +6032,7 @@ function showScoreboard(dish, passed) {
     )
     .join("");
   const buttonText = passed ? (isFinalOrder ? "영업 정산 보기" : "다음 주문 받기") : "다시 도전하기";
-  const orderLabel = state.gameMode === "challenge"
-    ? `챌린지 주문 ${dish.orderNumber}`
-    : `${dish.name} 주문 ${dish.orderNumber}/${state.orderQueue.length}`;
+  const orderLabel = `${dish.name} 주문 ${dish.orderNumber}/${state.orderQueue.length}`;
   state.scoreboardConclusion = passed
     ? { dish, playerRank }
     : null;
@@ -4320,7 +6043,7 @@ function showScoreboard(dish, passed) {
     <div class="scoreboard-list">${rows}</div>
     <article class="choice-card">
       <h3>${passed ? "주문 달성" : "목표 미달"}</h3>
-      <p>${passed ? `${requiredScore}점 목표를 넘겼습니다. ${state.gameMode === "challenge" ? "시간이 남아 있는 동안 다음 주문으로 바로 이어갑니다." : "다음 주문으로 영업을 이어갑니다."}` : `${requiredScore}점 이상을 받으면 이 주문을 완료할 수 있습니다.`}</p>
+      <p>${passed ? `${requiredScore}점 목표를 넘겼습니다. 다음 주문으로 영업을 이어갑니다.` : `${requiredScore}점 이상을 받으면 이 주문을 완료할 수 있습니다.`}</p>
       <button type="button" data-scoreboard-close="true">${buttonText}</button>
     </article>
   `, { returnTo: passed ? "complete-order" : null });
@@ -4375,7 +6098,7 @@ function completeServiceOrder(dish, playerRank) {
     state.pendingDish = null;
     const reachedLevel = getCareerRestaurantLevel();
     resetServiceDay();
-    playCoin();
+    playRewardCoin();
     updateHud();
     saveProgress();
     const nextMilestone = getCareerNextLevelReputation();
@@ -4394,20 +6117,20 @@ function completeServiceOrder(dish, playerRank) {
     Math.max(0, 4 - playerRank) +
     getUpgradeLevel("regulars") * 2 +
     (state.dailyEvent?.reputationBonus || 0);
-  state.coins += finalReward;
+  if (state.gameMode !== "challenge") state.coins += finalReward;
   state.reputation += reputationGain;
   if (state.serviceStats) {
     state.serviceStats.completedOrders += 1;
-    state.serviceStats.coinsEarned += finalReward;
+    if (state.gameMode !== "challenge") state.serviceStats.coinsEarned += finalReward;
     state.serviceStats.reputationEarned += reputationGain;
-    state.serviceStats.dishes.push({
-      name: dish.name,
-      score: dish.score,
-      clearTime: dish.clearTime,
-      rank: playerRank,
-      reward: finalReward,
-      reputation: reputationGain,
-    });
+    if (state.gameMode === "challenge") {
+      const existing = state.serviceStats.dishes.findIndex((d) => d.name === dish.name);
+      const entry = { name: dish.name, score: dish.score, clearTime: dish.clearTime, rank: playerRank, reward: 0, reputation: reputationGain };
+      if (existing >= 0) state.serviceStats.dishes[existing] = entry;
+      else state.serviceStats.dishes.push(entry);
+    } else {
+      state.serviceStats.dishes.push({ name: dish.name, score: dish.score, clearTime: dish.clearTime, rank: playerRank, reward: finalReward, reputation: reputationGain });
+    }
   }
 
   if (state.gameMode === "challenge") {
@@ -4416,10 +6139,9 @@ function completeServiceOrder(dish, playerRank) {
     state.targetRecipe = getCurrentOrder().recipe;
     state.selectedIngredients = [];
     state.pendingDish = null;
-    playCoin();
     updateHud();
     saveProgress();
-    showToast(`주문 ${state.serviceStats?.completedOrders || 0}개 완료! ${finalReward}코인 · 평판 +${reputationGain} · 다음 주문: ${getTargetRecipe().name}`);
+    showToast(`주문 ${state.serviceStats?.completedOrders || 0}개 완료! 평판 +${reputationGain} · 다음 주문: ${getTargetRecipe().name}`);
     return;
   }
 
@@ -4601,9 +6323,7 @@ function finishGame(won, copy) {
   if (state.minigame?.frameId) cancelAnimationFrame(state.minigame.frameId);
   clearOrderChallengeTimer();
   recordDayHistory(won);
-  if (state.gameMode === "challenge" && state.authUser && state.serviceStats?.completedOrders) {
-    void saveChallengeLeaderboardEntry();
-  }
+  const isChallengeEnd = state.gameMode === "challenge" && !state.tutorialMode;
   state.minigame = null;
   state.running = false;
   state.gameOver = true;
@@ -4618,13 +6338,22 @@ function finishGame(won, copy) {
   dom.inventoryBar.classList.add("hidden");
   dom.interactionPrompt.classList.add("hidden");
   dom.tutorialGuide.classList.add("hidden");
-  const challengeFinished = !state.tutorialMode && state.gameMode === "challenge";
-  dom.resultKicker.textContent = state.tutorialMode ? "tutorial complete" : challengeFinished ? "challenge complete" : won ? "three star service" : "closing time";
-  dom.resultTitle.textContent = state.tutorialMode ? "튜토리얼 완료" : challengeFinished ? "챌린지 종료" : won ? "별점 요리 완성" : "오늘의 영업 종료";
-  dom.resultCopy.textContent = state.tutorialMode ? "첫 영업의 기본 흐름을 모두 경험했습니다. 이제 일반 새 게임으로 도전해보세요." : copy;
-  dom.restartButton.textContent = state.tutorialMode ? "시작 화면으로" : challengeFinished ? "다시 도전" : "다음 영업일 시작";
-  dom.resultScreen.classList.remove("hidden");
   saveProgress();
+
+  if (isChallengeEnd) {
+    if (state.authUser && state.serviceStats?.completedOrders) {
+      saveChallengeLeaderboardEntry().then(() => void showChallengeLeaderboardScreen());
+    } else {
+      void showChallengeLeaderboardScreen();
+    }
+    return;
+  }
+
+  dom.resultKicker.textContent = state.tutorialMode ? "tutorial complete" : won ? "three star service" : "closing time";
+  dom.resultTitle.textContent = state.tutorialMode ? "튜토리얼 완료" : won ? "별점 요리 완성" : "오늘의 영업 종료";
+  dom.resultCopy.textContent = state.tutorialMode ? "첫 영업의 기본 흐름을 모두 경험했습니다. 이제 일반 새 게임으로 도전해보세요." : copy;
+  dom.restartButton.textContent = state.tutorialMode ? "시작 화면으로" : "다음 영업일 시작";
+  dom.resultScreen.classList.remove("hidden");
 }
 
 function recordDayHistory(won) {
@@ -4687,6 +6416,12 @@ function openModal(html, options = {}) {
   syncMusicPlayback();
 }
 
+function clearRegionActivity() {
+  if (state.regionActivity?.frameId) cancelAnimationFrame(state.regionActivity.frameId);
+  if (state.regionActivity?.timeoutId) clearTimeout(state.regionActivity.timeoutId);
+  state.regionActivity = null;
+}
+
 function closeModal(play = true, force = false) {
   if (state.minigame?.active && !force) {
     showToast("요리 중에는 타이밍을 끝까지 맞춰야 합니다.");
@@ -4694,6 +6429,7 @@ function closeModal(play = true, force = false) {
   }
 
   clearOrderChallengeTimer();
+  clearRegionActivity();
   const returnTo = state.modalReturn;
   state.modalReturn = null;
   state.modalOpen = false;
@@ -4717,17 +6453,20 @@ function updateHud() {
   dom.coinCount.textContent = String(state.coins);
   dom.reputationCount.textContent = String(state.reputation);
   dom.timer.textContent = state.gameMode === "career" ? "자유" : formatTime(state.timeLeft);
+  dom.mapButton.classList.toggle("hidden", state.gameMode !== "career" || !state.running || state.gameOver);
   dom.objective.textContent = getObjectiveSummary();
 
   if (state.currentQuest) {
     const quest = state.currentQuest;
     dom.questTitle.textContent = quest.name;
-    dom.questDetail.textContent = `${quest.detail} (${quest.progress}/${quest.total})`;
+    dom.questDetail.textContent = quest.progress !== undefined && quest.total !== undefined
+      ? `${quest.detail} (${quest.progress}/${quest.total})`
+      : quest.detail;
   } else {
     dom.questTitle.textContent = state.gameMode === "career" ? "운영 중" : "없음";
     dom.questDetail.textContent = state.gameMode === "career"
-      ? `${getCareerProgressSummary()} · 일 게시판에서 운영 자금을 더 벌 수 있습니다.`
-      : "일 게시판에서 코인을 벌 수 있습니다.";
+      ? `${getCareerProgressSummary()} · 지도 버튼이나 M키로 지역을 이동할 수 있습니다.`
+      : "일 게시판에서 랜덤 일을 받으세요.";
   }
 
   const inventoryEntries = Object.entries(state.inventory).filter(([, count]) => count > 0);
@@ -4911,7 +6650,7 @@ function stopMusic() {
 
 function syncMusicVolume() {
   if (!bgmAudio) return;
-  bgmAudio.volume = state.soundEnabled ? state.musicVolume : 0;
+  bgmAudio.volume = state.soundEnabled ? clampVolume(state.musicVolume * BGM_VOLUME_SCALE, 0) : 0;
 }
 
 function syncMusicPlayback() {
@@ -4948,7 +6687,9 @@ function playTone(freq, duration = 0.1, gain = 0.08, type = "sine", channel = "e
   if (!state.soundEnabled || !audioCtx) return;
   const osc = audioCtx.createOscillator();
   const amp = audioCtx.createGain();
-  const channelVolume = channel === "music" ? state.musicVolume : state.effectsVolume;
+  const channelVolume = channel === "music"
+    ? state.musicVolume
+    : clampVolume(state.effectsVolume * EFFECTS_VOLUME_SCALE, DEFAULT_EFFECTS_VOLUME);
   const finalGain = Math.max(0.0001, gain * channelVolume);
   if (channelVolume <= 0) return;
   osc.type = type;
@@ -4970,9 +6711,21 @@ function playCoin() {
   setTimeout(() => playTone(880, 0.08, 0.055, "sine"), 80);
 }
 
+function playRewardCoin() {
+  playTone(740, 0.08, 0.08, "triangle");
+  setTimeout(() => playTone(988, 0.1, 0.075, "triangle"), 85);
+  setTimeout(() => playTone(1244, 0.12, 0.065, "sine"), 170);
+}
+
 function playWork() {
   playTone(260, 0.06, 0.05, "square");
   setTimeout(() => playTone(340, 0.05, 0.035, "triangle"), 70);
+}
+
+function playPaper() {
+  playTone(210, 0.04, 0.03, "square");
+  setTimeout(() => playTone(170, 0.05, 0.025, "triangle"), 30);
+  setTimeout(() => playTone(240, 0.05, 0.02, "square"), 70);
 }
 
 function playCook() {
