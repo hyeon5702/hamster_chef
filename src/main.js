@@ -697,7 +697,9 @@ function createHelperHamster() {
 
 function setupInput() {
   dom.startButton.addEventListener("click", startGame);
-  dom.continueButton.addEventListener("click", continueGame);
+  if (dom.continueButton) {
+    dom.continueButton.addEventListener("click", continueGame);
+  }
   dom.careerButton.addEventListener("click", openCareerModePreview);
   dom.leaderboardButton.addEventListener("click", () => void openChallengeLeaderboardModal());
   dom.tutorialButton.addEventListener("click", startTutorialGame);
@@ -1245,15 +1247,20 @@ function getChallengeRunScore() {
   return dishes.reduce((total, dish) => total + (dish.score || 0), 0);
 }
 
+function getChallengeOrderNumber() {
+  return (state.serviceStats?.completedOrders || 0) + 1;
+}
+
 function buildChallengeRecordPayload() {
+  const completedOrders = state.serviceStats?.completedOrders || 0;
   return {
     user_id: state.authUser?.id,
     nickname: getProfileDisplayName(),
     challenge_score: getChallengeRunScore(),
     best_dish_score: state.serviceStats?.bestScore || 0,
     clear_time_seconds: getElapsedSeconds(),
-    completed_orders: state.serviceStats?.completedOrders || 0,
-    total_orders: state.orderQueue.length,
+    completed_orders: completedOrders,
+    total_orders: completedOrders,
     day_reached: state.day || 0,
     updated_at: new Date().toISOString(),
   };
@@ -1262,10 +1269,22 @@ function buildChallengeRecordPayload() {
 function isBetterChallengeRecord(next, current) {
   if (!current) return true;
   return (
-    next.challenge_score > current.challenge_score
+    next.completed_orders > current.completed_orders
     || (
-      next.challenge_score === current.challenge_score
-      && next.clear_time_seconds < current.clear_time_seconds
+      next.completed_orders === current.completed_orders
+      && (
+        next.challenge_score > current.challenge_score
+        || (
+          next.challenge_score === current.challenge_score
+          && (
+            next.best_dish_score > current.best_dish_score
+            || (
+              next.best_dish_score === current.best_dish_score
+              && next.clear_time_seconds < current.clear_time_seconds
+            )
+          )
+        )
+      )
     )
   );
 }
@@ -1383,7 +1402,9 @@ async function fetchChallengeLeaderboard(limit = 10) {
     client
       .from("challenge_leaderboard")
       .select("*")
+      .order("completed_orders", { ascending: false })
       .order("challenge_score", { ascending: false })
+      .order("best_dish_score", { ascending: false })
       .order("clear_time_seconds", { ascending: true })
       .limit(limit),
     client
@@ -1416,12 +1437,8 @@ async function clearRemotePlayableProgress() {
   const client = getSupabase();
   if (!client || !state.authUser) return;
   const userId = state.authUser.id;
-  const [{ error: saveError }, { error: historyError }] = await Promise.all([
-    client.from("game_saves").delete().eq("user_id", userId),
-    client.from("service_history").delete().eq("user_id", userId),
-  ]);
+  const { error: saveError } = await client.from("game_saves").delete().eq("user_id", userId);
   if (saveError) throw saveError;
-  if (historyError) throw historyError;
 }
 
 async function clearRemoteData() {
@@ -1485,16 +1502,16 @@ async function migrateLegacyDataIfNeeded() {
 }
 
 function refreshStartActions() {
-  if (!dom.continueButton) return;
   const loggedIn = Boolean(state.authUser);
-  const canContinue = loggedIn && hasPlayableProgress(getSavedProgress("challenge"));
   const hasCareerSave = loggedIn && hasPlayableProgress(getSavedProgress("career"));
   dom.startButton.disabled = !loggedIn;
   dom.careerButton.disabled = !loggedIn;
   dom.leaderboardButton.disabled = !loggedIn;
   dom.historyButton.disabled = !loggedIn;
-  dom.continueButton.disabled = !loggedIn;
-  dom.continueButton.classList.toggle("hidden", !canContinue);
+  if (dom.continueButton) {
+    dom.continueButton.disabled = !loggedIn;
+    dom.continueButton.classList.add("hidden");
+  }
   if (dom.careerButton) {
     dom.careerButton.textContent = hasCareerSave ? "성장 모드 이어하기" : "성장 모드 시작";
   }
@@ -1565,32 +1582,32 @@ async function openChallengeLeaderboardModal() {
             <div class="scoreboard-row ${entry.userId === state.authUser?.id ? "player-score-row" : ""}">
               <strong>${index + 1}등</strong>
               <span>${entry.nickname}</span>
-              <b>${entry.challengeScore}점</b>
-              <em>${formatClearTime(entry.clearTimeSeconds)}</em>
+              <b>${entry.completedOrders}개 · ${entry.challengeScore}점</b>
+              <em>최고 ${entry.bestDishScore}점</em>
             </div>
           `,
         )
         .join("")
-    : `<article class="choice-card"><h3>랭킹 없음</h3><p>아직 등록된 챌린지 기록이 없습니다. 첫 클리어 기록을 남겨보세요.</p></article>`;
+    : `<article class="choice-card"><h3>랭킹 없음</h3><p>아직 등록된 챌린지 기록이 없습니다. 제한 시간 안에 주문을 완성해 첫 기록을 남겨보세요.</p></article>`;
 
   const personalCard = personal
     ? `
       <article class="choice-card">
         <h3>내 최고 기록</h3>
-        <p>${personal.nickname} · ${personal.challengeScore}점 · 클리어 시간 ${formatClearTime(personal.clearTimeSeconds)}</p>
-        <p>최고 단일 요리 ${personal.bestDishScore}점 · 완료 주문 ${personal.completedOrders}/${personal.totalOrders} · ${personal.dayReached}일차 기록</p>
+        <p>${personal.nickname} · 완료 주문 ${personal.completedOrders}개 · 누적 ${personal.challengeScore}점</p>
+        <p>최고 단일 요리 ${personal.bestDishScore}점</p>
       </article>
     `
     : `
       <article class="choice-card">
         <h3>내 최고 기록</h3>
-        <p>아직 챌린지 클리어 기록이 없습니다. 영업을 완주하면 여기에 최고 점수가 남습니다.</p>
+        <p>아직 챌린지 기록이 없습니다. 제한 시간 안에 주문을 완성하면 여기에 최고 기록이 남습니다.</p>
       </article>
     `;
 
   dom.modalContent.innerHTML = `
     <h2>챌린지 랭킹</h2>
-    <p>점수가 높은 순으로 정렬되며, 동점일 때는 클리어 시간이 더 빠른 쪽이 앞섭니다.</p>
+    <p>완료 주문 수가 많은 순으로 정렬되며, 동점이면 누적 점수와 최고 단일 요리 점수로 순위가 갈립니다.</p>
     ${personalCard}
     <div class="scoreboard-list">${rows}</div>
   `;
@@ -1604,21 +1621,21 @@ function openHistoryModal() {
         .slice(-8)
         .reverse()
         .map(
-          (day) => `
+          (run) => `
             <div class="scoreboard-row history-row">
-              <strong>${day.day}일차</strong>
-              <span>${day.event}</span>
-              <b>${day.completed}/${day.total}</b>
-              <em>+${day.reputation}</em>
+              <strong>${run.day}회차</strong>
+              <span>${run.event}</span>
+              <b>${run.completed}개 · ${run.dishes?.reduce((total, dish) => total + (dish.score || 0), 0) || 0}점</b>
+              <em>최고 ${run.bestScore}점</em>
             </div>
           `,
         )
         .join("")
-    : `<article class="choice-card"><h3>기록 없음</h3><p>영업을 마치면 이곳에 하루 기록이 남습니다.</p></article>`;
+    : `<article class="choice-card"><h3>기록 없음</h3><p>챌린지를 마치면 이곳에 최근 도전 기록이 남습니다.</p></article>`;
 
   openModal(`
-    <h2>영업 기록</h2>
-    <p>최근 영업일의 이벤트, 완료 주문, 평판 성장을 확인합니다.</p>
+    <h2>도전 기록</h2>
+    <p>최근 챌린지의 주문 수, 누적 점수, 최고 접시 기록을 확인합니다.</p>
     <div class="scoreboard-list">${rows}</div>
   `);
 }
@@ -2055,6 +2072,7 @@ async function startGame() {
     return;
   }
   state.gameMode = "challenge";
+  const existingHistory = [...(state.history || [])].slice(-20);
   try {
     localStorage.removeItem(LEGACY_SAVE_KEY);
     localStorage.removeItem(CHALLENGE_SAVE_KEY);
@@ -2072,13 +2090,13 @@ async function startGame() {
   state.modalStopsMusic = false;
   state.modalReturn = null;
   state.remoteChallengeProgress = {
-    day: 0,
+    day: (existingHistory.at(-1)?.day || 0) + 1,
     coins: 12,
     inventory: {},
     recipeRecords: {},
     reputation: 0,
     upgrades: {},
-    history: [],
+    history: existingHistory,
     activeDay: null,
   };
   state.coins = 12;
@@ -2089,7 +2107,7 @@ async function startGame() {
   state.reputation = 0;
   state.upgrades = {};
   state.careerStats = null;
-  state.history = [];
+  state.history = existingHistory;
   state.savedActiveDay = null;
   state.dailyEvent = null;
   state.orderQueue = [];
@@ -2100,7 +2118,7 @@ async function startGame() {
   state.lastJudgement = null;
   state.minigame = null;
   state.scoreboardConclusion = null;
-  state.day = 0;
+  state.day = (existingHistory.at(-1)?.day || 0) + 1;
   clearOrderChallengeTimer();
   state.orderTimer = null;
   player.position.set(0, 0, 0);
@@ -2111,7 +2129,7 @@ async function startGame() {
   resetServiceDay();
   resetMusicPlayback();
   startRunningDay();
-  showToast(`${state.day}일차 첫 주문: ${getTargetRecipe().name} · ${state.dailyEvent.name}`);
+  showToast(`챌린지 시작: ${getTargetRecipe().name} · ${getCustomerPreference().name}`);
 }
 
 function startCareerGame() {
@@ -2309,7 +2327,7 @@ function continueGame() {
   }
   if (!restoreActiveDay()) resetServiceDay();
   startRunningDay();
-  showToast(`${state.day}일차 이어하기: ${getTargetRecipe().name} · ${state.dailyEvent.name}`);
+  showToast(`챌린지 이어하기: ${getTargetRecipe().name} · ${getCustomerPreference().name}`);
 }
 
 function restoreActiveDay() {
@@ -2385,42 +2403,7 @@ function startRunningDay() {
 }
 
 function restartGame() {
-  state.tutorialMode = false;
-  state.gameMode = "challenge";
-  dom.tutorialGuide.classList.add("hidden");
-  state.running = true;
-  state.gameOver = false;
-  state.paused = false;
-  state.modalOpen = false;
-  state.modalStopsMusic = false;
-  state.modalReturn = null;
-  state.coins = Math.max(12, state.coins);
-  state.timeLeft = GAME_SECONDS;
-  state.selectedIngredients = [];
-  resetServiceDay();
-  state.currentQuest = null;
-  state.pendingDish = null;
-  state.lastJudgement = null;
-  state.minigame = null;
-  state.scoreboardConclusion = null;
-  clearOrderChallengeTimer();
-  state.orderTimer = null;
-  player.position.set(0, 0, 0);
-  player.rotation.y = 0;
-  clearCrates();
-  playerCarryMesh.visible = false;
-  dom.resultScreen.classList.add("hidden");
-  dom.hud.classList.remove("hidden");
-  dom.questTracker.classList.remove("hidden");
-  dom.inventoryBar.classList.remove("hidden");
-  updateEventVisuals();
-  updateHelperVisibility();
-  updateHud();
-  ensureAudio();
-  resetMusicPlayback();
-  startMusic();
-  saveProgress();
-  showToast(`${state.day}일차 영업 시작: ${getTargetRecipe().name}`);
+  void startGame();
 }
 
 function toggleSound() {
@@ -2490,7 +2473,7 @@ function updateTimer(dt) {
   if (state.gameMode === "career") return;
   state.timeLeft = Math.max(0, state.timeLeft - dt);
   if (state.timeLeft <= 0) {
-    finishGame(false, makeServiceSummary(false, "영업 시간이 끝났습니다."));
+    finishGame(true, makeServiceSummary(true, "제한 시간이 끝났습니다."));
   }
   updateHud();
 }
@@ -2602,8 +2585,8 @@ function openQuestBoard() {
     <h2>일 게시판</h2>
     <p>코인을 벌면 재료를 살 수 있습니다. 한 번에 하나의 일만 진행됩니다.</p>
     <article class="choice-card">
-      <h3>영업 기록</h3>
-      <p>지난 영업일의 완료 주문, 이벤트, 평판 성장을 확인합니다.</p>
+      <h3>도전 기록</h3>
+      <p>최근 챌린지의 완료 주문 수와 점수 흐름을 확인합니다.</p>
       <button type="button" data-open-history="true">기록 보기</button>
     </article>
     <div class="grid-list">
@@ -3329,7 +3312,7 @@ function openUpgradeShop() {
   const lockedUpgrades = UPGRADES.filter((upgrade) => !isUnlocked(upgrade));
   openModal(`
     <h2>식당 업그레이드</h2>
-    <p>${state.gameMode === "career" ? "코인을 투자해 판매가, 손님 난이도, 성장 효율을 끌어올립니다. 성장 업그레이드는 일차를 지나며 자연스럽게 열립니다." : "코인을 투자해 다음 주문과 다음 영업일을 더 수월하게 만듭니다. 업그레이드는 계속 유지됩니다."}</p>
+    <p>${state.gameMode === "career" ? "코인을 투자해 판매가, 손님 난이도, 성장 효율을 끌어올립니다. 성장 업그레이드는 일차를 지나며 자연스럽게 열립니다." : "코인을 투자해 다음 주문과 남은 시간 활용을 더 유리하게 만듭니다. 업그레이드는 이번 도전 동안 유지됩니다."}</p>
     <div class="grid-list">
       ${upgrades.map((upgrade) => {
         const level = getUpgradeLevel(upgrade.id);
@@ -3441,11 +3424,11 @@ function resetServiceDay() {
     resetCareerService();
     return;
   }
-  state.day = (state.day || 0) + 1;
+  state.day = Math.max(1, state.day || (state.history.at(-1)?.day || 0) + 1);
   state.orderIndex = 0;
   state.helperCooldown = Math.max(0, 34 - getUpgradeLevel("assistant") * 5);
   state.dailyEvent = pickDailyEvent();
-  state.orderQueue = makeDailyOrders();
+  state.orderQueue = [makeChallengeOrder()];
   state.targetRecipe = state.orderQueue[0].recipe;
   state.serviceStats = {
     completedOrders: 0,
@@ -3455,6 +3438,25 @@ function resetServiceDay() {
     reputationEarned: 0,
     dishes: [],
   };
+}
+
+function makeChallengeOrder(previousRecipeId = state.orderQueue.at(-1)?.recipe?.id || null) {
+  const unlockedRecipes = getUnlockedRecipes();
+  let recipe = pickTargetRecipe();
+  if (recipe.id === previousRecipeId && unlockedRecipes.length > 1) {
+    recipe = unlockedRecipes[(unlockedRecipes.findIndex((item) => item.id === recipe.id) + 1) % unlockedRecipes.length] || recipe;
+  }
+  const completedOrders = state.serviceStats?.completedOrders || 0;
+  const baseRequiredScore = 76 + Math.min(18, Math.floor(completedOrders / 2) * 2);
+  return {
+    recipe,
+    requiredScore: applyDailyRequiredScore(recipe, baseRequiredScore),
+    customer: pickCustomerPreference(),
+  };
+}
+
+function queueNextChallengeOrder() {
+  state.orderQueue.push(makeChallengeOrder());
 }
 
 function resetCareerService() {
@@ -3570,6 +3572,9 @@ function getCustomerPreference() {
 }
 
 function getOrderLabel() {
+  if (state.gameMode === "challenge") {
+    return `${getChallengeOrderNumber()}번째`;
+  }
   return `${Math.min(state.orderIndex + 1, state.orderQueue.length)}/${state.orderQueue.length}`;
 }
 
@@ -3615,14 +3620,14 @@ function getObjectiveSummary() {
   if (!state.orderQueue.length) {
     return state.gameMode === "career"
       ? "성장 모드에서는 손님 주문을 계속 받아 식당을 키워갑니다."
-      : "챌린지 모드 목표 레시피는 시작 시 정해집니다.";
+      : "챌린지 모드에서는 제한 시간 동안 주문을 최대한 많이 완성합니다.";
   }
 
   if (state.gameMode === "career") {
     return `${state.day}일차 손님: ${getTargetRecipe().name} ${getRequiredScore()}점 이상 · ${getCustomerPreference().name} · ${getCareerProgressSummary()}`;
   }
 
-  return `${state.day}일차 주문 ${getOrderLabel()}: ${getTargetRecipe().name} ${getRequiredScore()}점 이상 · ${getCustomerPreference().name} · ${getReputationTier().name}`;
+  return `챌린지 주문 ${getOrderLabel()}: ${getTargetRecipe().name} ${getRequiredScore()}점 이상 · ${getCustomerPreference().name} · 누적 ${getChallengeRunScore()}점 · 완료 ${state.serviceStats?.completedOrders || 0}개`;
 }
 
 function openRecipeNote(options = {}) {
@@ -4190,7 +4195,7 @@ function finishCookingMinigame(miniGameScore, resultLabels) {
     name: targetRecipe.name,
     recipe: targetRecipe,
     requiredScore: targetOrder.requiredScore,
-    orderNumber: state.orderIndex + 1,
+    orderNumber: state.gameMode === "challenge" ? getChallengeOrderNumber() : state.orderIndex + 1,
     ingredients: minigame.cooking.ingredients,
     traits: minigame.cooking.traits,
     materialScore,
@@ -4288,7 +4293,7 @@ function showScoreboard(dish, passed) {
   const rankings = makeScoreboard(dish);
   const playerRank = rankings.findIndex((entry) => entry.isPlayer) + 1;
   const requiredScore = dish.requiredScore || getRequiredScore();
-  const isFinalOrder = state.orderIndex >= state.orderQueue.length - 1;
+  const isFinalOrder = state.gameMode !== "challenge" && state.orderIndex >= state.orderQueue.length - 1;
   const rows = rankings
     .map(
       (entry, index) => `
@@ -4302,17 +4307,20 @@ function showScoreboard(dish, passed) {
     )
     .join("");
   const buttonText = passed ? (isFinalOrder ? "영업 정산 보기" : "다음 주문 받기") : "다시 도전하기";
+  const orderLabel = state.gameMode === "challenge"
+    ? `챌린지 주문 ${dish.orderNumber}`
+    : `${dish.name} 주문 ${dish.orderNumber}/${state.orderQueue.length}`;
   state.scoreboardConclusion = passed
     ? { dish, playerRank }
     : null;
 
   openModal(`
     <h2>심사 결과</h2>
-    <p>${dish.name} 주문 ${dish.orderNumber}/${state.orderQueue.length} 심사가 끝났습니다. 햄스터 셰프는 ${dish.score}점, 클리어 시간 ${formatClearTime(dish.clearTime)}으로 ${playerRank}등입니다.</p>
+    <p>${orderLabel} 심사가 끝났습니다. 햄스터 셰프는 ${dish.score}점, 클리어 시간 ${formatClearTime(dish.clearTime)}으로 ${playerRank}등입니다.</p>
     <div class="scoreboard-list">${rows}</div>
     <article class="choice-card">
       <h3>${passed ? "주문 달성" : "목표 미달"}</h3>
-      <p>${passed ? `${requiredScore}점 목표를 넘겼습니다. 다음 주문으로 영업을 이어갑니다.` : `${requiredScore}점 이상을 받으면 이 주문을 완료할 수 있습니다.`}</p>
+      <p>${passed ? `${requiredScore}점 목표를 넘겼습니다. ${state.gameMode === "challenge" ? "시간이 남아 있는 동안 다음 주문으로 바로 이어갑니다." : "다음 주문으로 영업을 이어갑니다."}` : `${requiredScore}점 이상을 받으면 이 주문을 완료할 수 있습니다.`}</p>
       <button type="button" data-scoreboard-close="true">${buttonText}</button>
     </article>
   `, { returnTo: passed ? "complete-order" : null });
@@ -4400,6 +4408,19 @@ function completeServiceOrder(dish, playerRank) {
       reward: finalReward,
       reputation: reputationGain,
     });
+  }
+
+  if (state.gameMode === "challenge") {
+    state.orderIndex += 1;
+    queueNextChallengeOrder();
+    state.targetRecipe = getCurrentOrder().recipe;
+    state.selectedIngredients = [];
+    state.pendingDish = null;
+    playCoin();
+    updateHud();
+    saveProgress();
+    showToast(`주문 ${state.serviceStats?.completedOrders || 0}개 완료! ${finalReward}코인 · 평판 +${reputationGain} · 다음 주문: ${getTargetRecipe().name}`);
+    return;
   }
 
   const completedAllOrders = state.orderIndex >= state.orderQueue.length - 1;
@@ -4580,7 +4601,7 @@ function finishGame(won, copy) {
   if (state.minigame?.frameId) cancelAnimationFrame(state.minigame.frameId);
   clearOrderChallengeTimer();
   recordDayHistory(won);
-  if (won && state.gameMode === "challenge" && state.authUser) {
+  if (state.gameMode === "challenge" && state.authUser && state.serviceStats?.completedOrders) {
     void saveChallengeLeaderboardEntry();
   }
   state.minigame = null;
@@ -4597,10 +4618,11 @@ function finishGame(won, copy) {
   dom.inventoryBar.classList.add("hidden");
   dom.interactionPrompt.classList.add("hidden");
   dom.tutorialGuide.classList.add("hidden");
-  dom.resultKicker.textContent = state.tutorialMode ? "tutorial complete" : won ? "three star service" : "closing time";
-  dom.resultTitle.textContent = state.tutorialMode ? "튜토리얼 완료" : won ? "별점 요리 완성" : "오늘의 영업 종료";
+  const challengeFinished = !state.tutorialMode && state.gameMode === "challenge";
+  dom.resultKicker.textContent = state.tutorialMode ? "tutorial complete" : challengeFinished ? "challenge complete" : won ? "three star service" : "closing time";
+  dom.resultTitle.textContent = state.tutorialMode ? "튜토리얼 완료" : challengeFinished ? "챌린지 종료" : won ? "별점 요리 완성" : "오늘의 영업 종료";
   dom.resultCopy.textContent = state.tutorialMode ? "첫 영업의 기본 흐름을 모두 경험했습니다. 이제 일반 새 게임으로 도전해보세요." : copy;
-  dom.restartButton.textContent = state.tutorialMode ? "시작 화면으로" : "다음 영업일 시작";
+  dom.restartButton.textContent = state.tutorialMode ? "시작 화면으로" : challengeFinished ? "다시 도전" : "다음 영업일 시작";
   dom.resultScreen.classList.remove("hidden");
   saveProgress();
 }
@@ -4613,7 +4635,7 @@ function recordDayHistory(won) {
     won,
     event: state.dailyEvent?.name || "없음",
     completed: state.serviceStats.completedOrders,
-    total: state.orderQueue.length,
+    total: state.gameMode === "challenge" ? state.serviceStats.completedOrders : state.orderQueue.length,
     bestScore: state.serviceStats.bestScore,
     coins: state.serviceStats.coinsEarned,
     reputation: state.serviceStats.reputationEarned,
@@ -4637,6 +4659,16 @@ function makeServiceSummary(won, reason = "") {
   const dishSummary = stats.dishes.length
     ? stats.dishes.map((dish) => `${dish.name} ${dish.score}점`).join(" · ")
     : "완료한 주문 없음";
+  if (state.gameMode === "challenge") {
+    const totalScore = getChallengeRunScore();
+    const averageScore = stats.completedOrders ? Math.round(totalScore / stats.completedOrders) : 0;
+    return `${reason || "챌린지가 종료되었습니다."}
+완료 주문 ${stats.completedOrders}개 · 누적 점수 ${totalScore}점 · 평균 ${averageScore}점 · 최고 점수 ${stats.bestScore}점
+이번 도전에서 번 코인 ${stats.coinsEarned} · 평판 +${stats.reputationEarned} · 현재 등급 ${getReputationTier().name}
+라운드 조건 ${state.dailyEvent?.name || "없음"} · 플레이 시간 ${elapsed}
+완성 요리: ${dishSummary}`;
+  }
+
   const heading = won ? "오늘의 모든 주문을 마쳤습니다." : `${reason} 다음 영업에서는 주문 큐를 끝까지 완성해봐요.`;
 
   return `${heading}
