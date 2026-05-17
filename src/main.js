@@ -206,6 +206,8 @@ const ORDER_REQUESTS = ["매운맛 제외", "신선한 향 강조", "부드럽�
 const DEFAULT_MUSIC_VOLUME = 0.2;
 const DEFAULT_EFFECTS_VOLUME = 0.85;
 const BGM_AUDIO_PATH = "./assets/audio/hamster-chef-bgm.mp3";
+const PANIC_BGM_PATH = "./assets/audio/minute-de-panique.mp3";
+const PANIC_BGM_THRESHOLD = 60; // 남은 시간(초) 이하일 때 긴박한 BGM 전환
 const AUDIO_SESSION_KEY = `session-${Date.now()}`;
 const BGM_VOLUME_SCALE = 1 / 6;
 const EFFECTS_VOLUME_SCALE = 2.25;
@@ -444,7 +446,9 @@ let helperHamster;
 let currentInteractable = null;
 let audioCtx;
 let bgmAudio;
+let panicBgmAudio;
 let restartMusicOnNextPlay = true;
+let panicBgmActive = false;
 let toastTimer;
 let supabase;
 let questArrow = null;
@@ -3296,9 +3300,14 @@ function updateCamera(dt) {
 
 function updateTimer(dt) {
   if (state.gameMode === "career") return;
+  const prevTimeLeft = state.timeLeft;
   state.timeLeft = Math.max(0, state.timeLeft - dt);
   if (state.timeLeft <= 0) {
     finishGame(true, makeServiceSummary(true, "제한 시간이 끝났습니다."));
+  }
+  // 1분 이하로 처음 진입할 때 긴박한 BGM으로 전환
+  if (prevTimeLeft > PANIC_BGM_THRESHOLD && state.timeLeft <= PANIC_BGM_THRESHOLD) {
+    syncMusicPlayback();
   }
   updateHud();
 }
@@ -6656,6 +6665,16 @@ function ensureBgmAudio() {
   syncMusicVolume();
 }
 
+function ensurePanicBgmAudio() {
+  if (!panicBgmAudio) {
+    panicBgmAudio = new Audio(`${PANIC_BGM_PATH}?v=${AUDIO_SESSION_KEY}`);
+    panicBgmAudio.loop = true;
+    panicBgmAudio.preload = "auto";
+    panicBgmAudio.load();
+  }
+  panicBgmAudio.volume = state.soundEnabled ? clampVolume(state.musicVolume * BGM_VOLUME_SCALE, 0) : 0;
+}
+
 function resetMusicPlayback() {
   ensureBgmAudio();
   if (!bgmAudio) return;
@@ -6666,6 +6685,12 @@ function resetMusicPlayback() {
   } catch {
     restartMusicOnNextPlay = true;
   }
+  // 긴박한 BGM도 초기화
+  if (panicBgmAudio) {
+    panicBgmAudio.pause();
+    try { panicBgmAudio.currentTime = 0; } catch { /* ignore */ }
+  }
+  panicBgmActive = false;
 }
 
 function startMusic() {
@@ -6674,11 +6699,15 @@ function startMusic() {
 
 function stopMusic() {
   if (bgmAudio) bgmAudio.pause();
+  if (panicBgmAudio) panicBgmAudio.pause();
+  panicBgmActive = false;
 }
 
 function syncMusicVolume() {
   if (!bgmAudio) return;
-  bgmAudio.volume = state.soundEnabled ? clampVolume(state.musicVolume * BGM_VOLUME_SCALE, 0) : 0;
+  const vol = state.soundEnabled ? clampVolume(state.musicVolume * BGM_VOLUME_SCALE, 0) : 0;
+  bgmAudio.volume = vol;
+  if (panicBgmAudio) panicBgmAudio.volume = vol;
 }
 
 function syncMusicPlayback() {
@@ -6693,6 +6722,35 @@ function syncMusicPlayback() {
   const shouldPlay = state.running && !state.gameOver && !state.paused && !state.modalStopsMusic;
   if (!shouldPlay) {
     bgmAudio.pause();
+    if (panicBgmAudio) panicBgmAudio.pause();
+    return;
+  }
+
+  // 챌린지/튜토리얼 모드에서 1분 이하면 긴박한 BGM으로 전환
+  const usePanic =
+    (state.gameMode === "challenge" || state.gameMode === "tutorial") &&
+    state.timeLeft <= PANIC_BGM_THRESHOLD &&
+    state.timeLeft > 0;
+
+  if (usePanic && !panicBgmActive) {
+    // 일반 BGM → 긴박한 BGM 전환
+    bgmAudio.pause();
+    ensurePanicBgmAudio();
+    try { panicBgmAudio.currentTime = 0; } catch { /* ignore */ }
+    const playAttempt = panicBgmAudio.play();
+    if (playAttempt?.catch) playAttempt.catch(() => {});
+    panicBgmActive = true;
+    return;
+  }
+
+  if (!usePanic && panicBgmActive) {
+    // 긴박한 BGM → 일반 BGM 복귀 (시간 추가 등 예외 상황 대비)
+    if (panicBgmAudio) panicBgmAudio.pause();
+    panicBgmActive = false;
+  }
+
+  if (panicBgmActive) {
+    // 이미 긴박한 BGM 재생 중 — 별도 처리 불필요
     return;
   }
 
