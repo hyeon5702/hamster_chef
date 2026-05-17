@@ -1678,7 +1678,7 @@ function mapLeaderboardError(error) {
 
 async function saveChallengeLeaderboardEntry() {
   const client = getSupabase();
-  if (!client || !state.authUser || !state.serviceStats?.completedOrders) return;
+  if (!client || !state.authUser || !state.serviceStats) return;
   const payload = buildChallengeRecordPayload();
   const { data: existing, error: existingError } = await client
     .from("challenge_leaderboard")
