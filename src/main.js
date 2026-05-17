@@ -6124,10 +6124,7 @@ function completeServiceOrder(dish, playerRank) {
     if (state.gameMode !== "challenge") state.serviceStats.coinsEarned += finalReward;
     state.serviceStats.reputationEarned += reputationGain;
     if (state.gameMode === "challenge") {
-      const existing = state.serviceStats.dishes.findIndex((d) => d.name === dish.name);
-      const entry = { name: dish.name, score: dish.score, clearTime: dish.clearTime, rank: playerRank, reward: 0, reputation: reputationGain };
-      if (existing >= 0) state.serviceStats.dishes[existing] = entry;
-      else state.serviceStats.dishes.push(entry);
+      state.serviceStats.dishes.push({ name: dish.name, score: dish.score, clearTime: dish.clearTime, rank: playerRank, reward: 0, reputation: reputationGain });
     } else {
       state.serviceStats.dishes.push({ name: dish.name, score: dish.score, clearTime: dish.clearTime, rank: playerRank, reward: finalReward, reputation: reputationGain });
     }
