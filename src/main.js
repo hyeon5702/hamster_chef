@@ -1570,13 +1570,13 @@ function buildChallengeRecordPayload() {
 function isBetterChallengeRecord(next, current) {
   if (!current) return true;
   return (
-    next.completed_orders > current.completed_orders
+    next.challenge_score > current.challenge_score
     || (
-      next.completed_orders === current.completed_orders
+      next.challenge_score === current.challenge_score
       && (
-        next.challenge_score > current.challenge_score
+        next.completed_orders > current.completed_orders
         || (
-          next.challenge_score === current.challenge_score
+          next.completed_orders === current.completed_orders
           && (
             next.best_dish_score > current.best_dish_score
             || (
@@ -1703,8 +1703,8 @@ async function fetchChallengeLeaderboard(limit = 10) {
     client
       .from("challenge_leaderboard")
       .select("*")
-      .order("completed_orders", { ascending: false })
       .order("challenge_score", { ascending: false })
+      .order("completed_orders", { ascending: false })
       .order("best_dish_score", { ascending: false })
       .order("clear_time_seconds", { ascending: true })
       .limit(limit),
