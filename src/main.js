@@ -6490,6 +6490,10 @@ function updateHud() {
   dom.coinCount.textContent = String(state.coins);
   dom.reputationCount.textContent = String(state.reputation);
   dom.timer.textContent = state.gameMode === "career" ? "자유" : formatTime(state.timeLeft);
+  dom.timer.classList.toggle(
+    "timer-panic",
+    state.gameMode !== "career" && state.running && !state.gameOver && state.timeLeft <= PANIC_BGM_THRESHOLD,
+  );
   dom.mapButton.classList.toggle("hidden", state.gameMode !== "career" || !state.running || state.gameOver);
   dom.objective.textContent = getObjectiveSummary();
 
