@@ -5,3 +5,5 @@ build/
 *.log
 .env
 .env.*
+.claude/
+.claude/
