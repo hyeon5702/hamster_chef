@@ -546,6 +546,15 @@ async function applySession(session) {
   await hydrateRemoteState();
   refreshStartActions();
   syncAuthUi();
+
+  // 신규 계정이면 튜토리얼 자동 시작
+  const tutorialSeenKey = `hamster_tutorial_seen_${state.authUser.id}`;
+  const isNewAccount =
+    state.history.length === 0 && !hasPlayableProgress(getSavedProgress("challenge"));
+  if (isNewAccount && !localStorage.getItem(tutorialSeenKey)) {
+    localStorage.setItem(tutorialSeenKey, "1");
+    startTutorialGame();
+  }
 }
 
 function setupScene() {
@@ -2627,7 +2636,7 @@ function getTutorialStepContent() {
   if (state.tutorialStep === 1) {
     return {
       title: "일 게시판에서 코인 벌기",
-      copy: "왼쪽 뒤편의 <strong>일 게시판</strong>으로 가서 <strong>E</strong> 또는 <strong>Enter</strong>를 누르세요. 처음에는 <strong>반짝 접시 정리</strong>를 추천합니다.",
+      copy: "왼쪽 뒤편의 <strong>일 게시판</strong>으로 가서 <strong>E</strong> 또는 <strong>Enter</strong>를 누르세요. 처음에는 <strong>반짝 접시 정리</strong>나 <strong>주문표 전달</strong>처럼 간단한 일을 골라보세요.",
     };
   }
 
@@ -2648,7 +2657,16 @@ function getTutorialStepContent() {
   if (state.tutorialStep === 4) {
     return {
       title: "조리대에서 요리하기",
-      copy: "중앙 오른쪽의 <strong>조리대</strong>로 가서 재료 3개를 넣고 요리하세요. 미니게임은 화면 지시에 맞춰 <strong>Space</strong>, <strong>Enter</strong>, 클릭을 사용합니다.",
+      copy: `중앙 오른쪽의 <strong>조리대</strong>로 가서 재료 3개를 넣고 요리하세요.<br>
+미니게임 종류에 따라 조작이 달라집니다:
+<ul style="margin:6px 0 0 16px;padding:0;font-size:0.92em;line-height:1.7">
+  <li><strong>타이밍</strong> — 게이지가 구간에 들어올 때 Space / 클릭</li>
+  <li><strong>온도 조절</strong> — 불 키우기·줄이기 버튼으로 60~80°C 유지</li>
+  <li><strong>재료 썰기</strong> — 화살표 방향키 또는 버튼으로 재료 자르기</li>
+  <li><strong>물 끓이기</strong> — 불 조절 버튼으로 적정 온도 구간 유지</li>
+  <li><strong>반죽 치기</strong> — 제한시간 안에 버튼을 최대한 많이 눌러요</li>
+  <li><strong>플레이팅</strong> — 떨어지는 재료를 접시 구역에서 클릭으로 받아요</li>
+</ul>`,
     };
   }
 
@@ -2678,7 +2696,16 @@ function getTutorialQuestCopy() {
   if (quest.id === "stock") {
     return "바닥의 <strong>재료 상자</strong>를 찾아 들고, 오른쪽의 <strong>재료 선반</strong>에 올려두세요. 상자 3개를 정리하면 완료됩니다.";
   }
-  return "화면 아래 현재 일 안내를 보면서 일을 완료해보세요.";
+  if (quest.id === "sort") {
+    return "오른쪽의 <strong>재료 선반</strong>으로 가서 <strong>E</strong>를 누르세요. 컨베이어 벨트에 올라오는 재료를 보고, 정상이면 <strong>통과(F)</strong>, 상한 재료(💨 표시)면 <strong>불량(G)</strong>을 눌러 선별하세요. 틀리면 목숨이 줄어드니 집중하세요!";
+  }
+  if (quest.id === "mop") {
+    return "홀 바닥에 퍼진 <strong>얼룩 5개</strong>를 찾아보세요. 얼룩 가까이 다가가면 상호작용 버튼이 뜹니다. <strong>E</strong>를 눌러 얼룩을 닦아내세요.";
+  }
+  if (quest.id === "water") {
+    return "오른쪽 앞쪽의 <strong>화분</strong>으로 가서 <strong>E</strong>를 누르세요. 화분을 선택한 뒤 <strong>물 따르기 💧</strong> 버튼을 눌러 물을 주세요. 물이 <strong>넘치거나 완전히 마르지</strong> 않도록 4개 화분을 모두 관리하면 됩니다.";
+  }
+  return "화면 왼쪽 아래 현재 일 안내를 보면서 일을 완료해보세요.";
 }
 
 function getTutorialIngredientSuggestion(recipe) {
@@ -2998,6 +3025,10 @@ function continueCareerGame() {
 }
 
 function startTutorialGame() {
+  // 튜토리얼 시작 기록 — 신규 계정 자동 시작 중복 방지
+  if (state.authUser) {
+    localStorage.setItem(`hamster_tutorial_seen_${state.authUser.id}`, "1");
+  }
   state.gameMode = "tutorial";
   state.tutorialMode = true;
   state.tutorialStep = 0;
