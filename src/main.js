@@ -57,6 +57,13 @@ const dom = {
   challengeLbContent: document.querySelector("#challenge-lb-content"),
   challengeLbExit: document.querySelector("#challenge-lb-exit"),
   toast: document.querySelector("#toast"),
+  multiButton: document.querySelector("#multi-button"),
+  pvpOpponentHud: document.querySelector("#pvp-opponent-hud"),
+  pvpOpponentName: document.querySelector("#pvp-opponent-name"),
+  pvpOpponentOrders: document.querySelector("#pvp-opponent-orders"),
+  pvpOpponentScore: document.querySelector("#pvp-opponent-score"),
+  pvpDebuffNotice: document.querySelector("#pvp-debuff-notice"),
+  pvpSabotagePanel: document.querySelector("#pvp-sabotage-panel"),
 };
 
 const INGREDIENTS = [
@@ -208,6 +215,15 @@ const DEFAULT_EFFECTS_VOLUME = 0.85;
 const BGM_AUDIO_PATH = "./assets/audio/hamster-chef-bgm.mp3";
 const PANIC_BGM_PATH = "./assets/audio/minute-de-panique.mp3";
 const PANIC_BGM_THRESHOLD = 60; // 남은 시간(초) 이하일 때 긴박한 BGM 전환
+
+// PvP 멀티 챌린지
+const PVP_SABOTAGE_COSTS = { stockout: 15, recipe_swap: 20, minigame_speed: 18, time_steal: 25 };
+const PVP_SABOTAGE_COOLDOWN_MS = 12000;
+const PVP_STOCKOUT_DURATION_MS = 30000;
+const PVP_STOCKOUT_INGREDIENTS = ["cheese", "cream", "mushroom", "carrot", "berry", "herb", "pepper"];
+const PVP_SCORE_BROADCAST_INTERVAL_MS = 2500;
+const PVP_ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PVP_RESULT_WAIT_MS = 5000;
 const AUDIO_SESSION_KEY = `session-${Date.now()}`;
 const BGM_VOLUME_SCALE = 1 / 6;
 const EFFECTS_VOLUME_SCALE = 2.25;
@@ -427,6 +443,14 @@ const state = {
   authMessage: "",
   authBannerType: "warning",
   gameMode: "challenge",
+  // PvP
+  pvpRoom: null,       // { roomCode, isHost, opponentId, opponentNickname }
+  pvpOpponent: null,   // { nickname, orders, score, done }
+  pvpDebuffs: {},      // { stockout: { ingredientId, expiresAt }, minigame_speed: expiresAt }
+  pvpSabotageCooldowns: {},  // { type: expiryTimestamp }
+  pvpNextMinigameSpeedDebuff: false,
+  pvpScoreBroadcastTimer: 0,
+  pvpDoneWaitTimer: null,
 };
 
 const keys = new Set();
@@ -942,6 +966,10 @@ function setupInput() {
   dom.leaderboardButton.addEventListener("click", () => void openChallengeLeaderboardModal());
   dom.tutorialButton.addEventListener("click", startTutorialGame);
   dom.historyButton.addEventListener("click", openHistoryModal);
+  dom.multiButton.addEventListener("click", openMultiChallengeModal);
+  dom.pvpSabotagePanel.querySelectorAll("[data-sabotage]").forEach((btn) => {
+    btn.addEventListener("click", () => sendSabotage(btn.dataset.sabotage));
+  });
   dom.mapButton.addEventListener("click", openCareerMapModal);
   dom.authSubmitButton.addEventListener("click", () => void handleAuthSubmit());
   dom.authSwitchButton.addEventListener("click", handleAuthSwitch);
@@ -1822,6 +1850,7 @@ function refreshStartActions() {
   dom.careerButton.disabled = !loggedIn;
   dom.leaderboardButton.disabled = !loggedIn;
   dom.historyButton.disabled = !loggedIn;
+  dom.multiButton.disabled = !loggedIn;
   if (dom.continueButton) {
     dom.continueButton.disabled = !loggedIn;
     dom.continueButton.classList.add("hidden");
@@ -3255,6 +3284,7 @@ function animate() {
     updateTutorialGuide();
     updateQuestArrow();
     checkMopProgress();
+    updatePvpFrame(dt);
     if (questArrow?.visible) {
       questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
     }
@@ -4627,14 +4657,17 @@ function openShop() {
       ${ingredients.map(
         (ingredient) => {
           const price = getIngredientPrice(ingredient);
+          const stockout = state.pvpDebuffs?.stockout;
+          const isStockedOut = stockout && stockout.ingredientId === ingredient.id && Date.now() < stockout.expiresAt;
+          const remainSec = isStockedOut ? Math.ceil((stockout.expiresAt - Date.now()) / 1000) : 0;
           return `
-        <article class="choice-card ingredient-card">
+        <article class="choice-card ingredient-card${isStockedOut ? " stockout-card" : ""}">
           ${ingredientImage(ingredient)}
           <h3>${ingredient.name}</h3>
           <p>${formatTraits(ingredient.traits)}</p>
           <p><strong>${price}코인</strong></p>
-          <button class="buy-button" type="button" data-buy="${ingredient.id}">
-            구매
+          <button class="buy-button" type="button" data-buy="${ingredient.id}" ${isStockedOut ? "disabled" : ""}>
+            ${isStockedOut ? `품절 (${remainSec}s)` : "구매"}
           </button>
         </article>
       `;
@@ -5298,10 +5331,13 @@ function cookDish() {
 
   const ingredients = state.selectedIngredients.map((id) => INGREDIENTS.find((item) => item.id === id));
   const traits = mergeTraits(ingredients);
+  const speedDebuff = Boolean(state.pvpNextMinigameSpeedDebuff);
+  state.pvpNextMinigameSpeedDebuff = false;
   state.minigame = {
     active: true,
     cooking: { ingredients, traits },
     type: chooseCookingMiniGame(),
+    speedDebuff,
   };
   state.selectedIngredients = [];
   updateHud();
@@ -5377,7 +5413,7 @@ function animateTimingBar() {
   const now = performance.now();
   const dt = Math.min((now - minigame.lastFrame) / 1000, 0.05);
   minigame.lastFrame = now;
-  minigame.position += minigame.direction * dt * 78;
+  minigame.position += minigame.direction * dt * (minigame.speedDebuff ? 140 : 78);
 
   if (minigame.position >= 100) {
     minigame.position = 100;
@@ -6178,6 +6214,7 @@ function completeServiceOrder(dish, playerRank) {
     state.pendingDish = null;
     updateHud();
     saveProgress();
+    broadcastPvpScore();
     showToast(`주문 ${state.serviceStats?.completedOrders || 0}개 완료! 평판 +${reputationGain} · 다음 주문: ${getTargetRecipe().name}`);
     return;
   }
@@ -6378,6 +6415,10 @@ function finishGame(won, copy) {
   saveProgress();
 
   if (isChallengeEnd) {
+    if (state.pvpRoom) {
+      endPvpGame();
+      return;
+    }
     if (state.authUser && state.serviceStats?.completedOrders) {
       saveChallengeLeaderboardEntry().then(() => void showChallengeLeaderboardScreen());
     } else {
@@ -6391,6 +6432,452 @@ function finishGame(won, copy) {
   dom.resultCopy.textContent = state.tutorialMode ? "첫 영업의 기본 흐름을 모두 경험했습니다. 이제 일반 새 게임으로 도전해보세요." : copy;
   dom.restartButton.textContent = state.tutorialMode ? "시작 화면으로" : "다음 영업일 시작";
   dom.resultScreen.classList.remove("hidden");
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PvP 멀티 챌린지
+// ─────────────────────────────────────────────────────────────
+
+function generateRoomCode() {
+  return Array.from({ length: 6 }, () =>
+    PVP_ROOM_CODE_CHARS[Math.floor(Math.random() * PVP_ROOM_CODE_CHARS.length)],
+  ).join("");
+}
+
+function openMultiChallengeModal() {
+  if (!state.authUser) { syncAuthUi("멀티 챌린지는 로그인 후 이용 가능합니다."); return; }
+  openModal(`
+    <h2>🐹 멀티 챌린지</h2>
+    <p>친구와 방을 만들어 동시에 챌린지를 플레이하세요. 상대방 점수가 실시간으로 보이고, 코인으로 방해를 할 수 있습니다!</p>
+    <div class="mode-actions" style="margin-top:16px">
+      <button type="button" id="pvp-create-btn" class="primary-action">방 만들기</button>
+      <button type="button" id="pvp-join-btn" class="primary-action secondary-action">방 참가하기</button>
+    </div>
+    <div id="pvp-join-form" class="pvp-join-form hidden" style="margin-top:16px">
+      <label class="auth-field">
+        <span>방 코드 입력</span>
+        <input id="pvp-join-code" type="text" maxlength="6" placeholder="ABC123" style="text-transform:uppercase;letter-spacing:4px" />
+      </label>
+      <button type="button" id="pvp-join-confirm" class="primary-action" style="margin-top:8px">참가</button>
+    </div>
+  `);
+  dom.modalContent.querySelector("#pvp-create-btn").addEventListener("click", () => void createPvpRoom());
+  dom.modalContent.querySelector("#pvp-join-btn").addEventListener("click", () => {
+    dom.modalContent.querySelector("#pvp-join-form").classList.remove("hidden");
+  });
+  dom.modalContent.querySelector("#pvp-join-confirm").addEventListener("click", () => {
+    const code = dom.modalContent.querySelector("#pvp-join-code").value.trim().toUpperCase();
+    if (code.length !== 6) { showToast("방 코드는 6자리입니다."); return; }
+    void joinPvpRoom(code);
+  });
+}
+
+async function createPvpRoom() {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+  const roomCode = generateRoomCode();
+  const nickname = getProfileDisplayName();
+  const { error } = await client.from("challenge_rooms").insert({
+    room_code: roomCode,
+    host_id: state.authUser.id,
+    host_nickname: nickname,
+    status: "waiting",
+  });
+  if (error) { showToast("방 생성에 실패했습니다: " + error.message); return; }
+  state.pvpRoom = { roomCode, isHost: true, opponentId: null, opponentNickname: null };
+  state.pvpOpponent = null;
+  setupPvpChannel(roomCode);
+  showPvpLobby();
+}
+
+async function joinPvpRoom(code) {
+  const client = getSupabase();
+  if (!client || !state.authUser) return;
+  const { data: room, error: fetchErr } = await client
+    .from("challenge_rooms").select("*").eq("room_code", code).eq("status", "waiting").maybeSingle();
+  if (fetchErr || !room) { showToast("방을 찾을 수 없습니다. 코드를 확인해주세요."); return; }
+  if (room.guest_id) { showToast("이미 다른 플레이어가 참가한 방입니다."); return; }
+  if (room.host_id === state.authUser.id) { showToast("자신이 만든 방에는 참가할 수 없습니다."); return; }
+  const nickname = getProfileDisplayName();
+  const { error: updateErr } = await client.from("challenge_rooms")
+    .update({ guest_id: state.authUser.id, guest_nickname: nickname })
+    .eq("room_code", code);
+  if (updateErr) { showToast("방 참가에 실패했습니다."); return; }
+  state.pvpRoom = { roomCode: code, isHost: false, opponentId: room.host_id, opponentNickname: room.host_nickname };
+  state.pvpOpponent = { nickname: room.host_nickname, orders: 0, score: 0, done: false };
+  setupPvpChannel(code);
+  showPvpLobby();
+}
+
+let pvpChannel = null;
+
+function setupPvpChannel(roomCode) {
+  const client = getSupabase();
+  if (!client) return;
+  if (pvpChannel) { client.removeChannel(pvpChannel); }
+  pvpChannel = client.channel(`pvp:${roomCode}`, { config: { broadcast: { self: false } } });
+
+  // 상대방이 로비에 참가했을 때 (방장용 DB 변경 감지)
+  if (state.pvpRoom?.isHost) {
+    pvpChannel.on("postgres_changes", {
+      event: "UPDATE", schema: "public", table: "challenge_rooms", filter: `room_code=eq.${roomCode}`,
+    }, (payload) => {
+      if (payload.new.guest_id && !state.pvpRoom.opponentId) {
+        state.pvpRoom.opponentId = payload.new.guest_id;
+        state.pvpRoom.opponentNickname = payload.new.guest_nickname;
+        state.pvpOpponent = { nickname: payload.new.guest_nickname, orders: 0, score: 0, done: false };
+        showPvpLobby();
+        showToast(`${payload.new.guest_nickname}님이 참가했습니다!`);
+      }
+    });
+  }
+
+  // 게임 시작 신호
+  pvpChannel.on("broadcast", { event: "game_start" }, ({ payload }) => {
+    if (!state.pvpRoom?.isHost) {
+      startPvpCountdown(payload.startAt);
+    }
+  });
+
+  // 상대방 점수 업데이트
+  pvpChannel.on("broadcast", { event: "score_update" }, ({ payload }) => {
+    if (state.pvpOpponent) {
+      state.pvpOpponent.orders = payload.orders;
+      state.pvpOpponent.score = payload.score;
+      updatePvpOpponentHud();
+    }
+  });
+
+  // 방해 수신
+  pvpChannel.on("broadcast", { event: "sabotage" }, ({ payload }) => {
+    applyPvpDebuff(payload.type, payload.fromNickname, payload.extra);
+  });
+
+  // 상대방 게임 종료
+  pvpChannel.on("broadcast", { event: "game_done" }, ({ payload }) => {
+    if (state.pvpOpponent) {
+      state.pvpOpponent.orders = payload.orders;
+      state.pvpOpponent.score = payload.score;
+      state.pvpOpponent.done = true;
+    }
+    if (state.gameOver) showPvpResult();
+  });
+
+  pvpChannel.subscribe();
+}
+
+function showPvpLobby() {
+  const room = state.pvpRoom;
+  const isHost = room?.isHost;
+  const opponentName = room?.opponentNickname;
+  const canStart = isHost && opponentName;
+
+  openModal(`
+    <h2>🐹 대기 중</h2>
+    <p class="pvp-room-code-label">방 코드</p>
+    <div class="pvp-room-code">${room?.roomCode || "------"}</div>
+    <p style="font-size:0.9em;color:#888;margin:4px 0 16px">친구에게 이 코드를 알려주세요</p>
+    <div class="pvp-lobby-players">
+      <div class="pvp-lobby-player">
+        <span>👑 방장</span>
+        <strong>${getProfileDisplayName()}</strong>
+      </div>
+      <div class="pvp-lobby-player pvp-lobby-vs">VS</div>
+      <div class="pvp-lobby-player">
+        <span>🐹 참가자</span>
+        <strong>${opponentName || "대기 중..."}</strong>
+      </div>
+    </div>
+    ${isHost ? `
+      <div class="mode-actions" style="margin-top:20px">
+        <button type="button" id="pvp-start-btn" class="primary-action" ${canStart ? "" : "disabled"}>
+          ${canStart ? "게임 시작!" : "상대방 기다리는 중..."}
+        </button>
+        <button type="button" id="pvp-cancel-btn" class="primary-action secondary-action">방 취소</button>
+      </div>
+    ` : `
+      <p style="margin-top:20px;text-align:center">방장이 게임을 시작할 때까지 기다리세요...</p>
+      <div class="mode-actions">
+        <button type="button" id="pvp-cancel-btn" class="primary-action secondary-action">나가기</button>
+      </div>
+    `}
+  `);
+
+  dom.modalContent.querySelector("#pvp-cancel-btn")?.addEventListener("click", () => void leavePvpRoom());
+  if (canStart) {
+    dom.modalContent.querySelector("#pvp-start-btn")?.addEventListener("click", () => {
+      const startAt = Date.now() + 3500;
+      pvpChannel?.send({ type: "broadcast", event: "game_start", payload: { startAt } });
+      startPvpCountdown(startAt);
+    });
+  }
+}
+
+function startPvpCountdown(startAt) {
+  closeModal(false, true);
+  const remaining = Math.max(0, startAt - Date.now());
+
+  let count = Math.ceil(remaining / 1000);
+  const show = () => {
+    if (count > 0) {
+      showToast(`${count}...`);
+      count--;
+      setTimeout(show, 1000);
+    }
+  };
+  show();
+
+  setTimeout(() => {
+    // pvpRoom이 살아있으면 게임 시작
+    if (!state.pvpRoom) return;
+    startChallengeGamePvp();
+  }, remaining);
+}
+
+async function startChallengeGamePvp() {
+  // challenge_rooms status → playing
+  const client = getSupabase();
+  if (client && state.pvpRoom?.isHost) {
+    await client.from("challenge_rooms")
+      .update({ status: "playing" })
+      .eq("room_code", state.pvpRoom.roomCode);
+  }
+  // 일반 챌린지 시작 (pvpRoom 플래그 유지 — startGame의 auth 체크 우회)
+  const savedRoom = state.pvpRoom;
+  await startGame();
+  state.pvpRoom = savedRoom; // startGame이 reset해도 복원
+  // 방해 패널 & 상대 HUD 표시
+  dom.pvpSabotagePanel.classList.remove("hidden");
+  dom.pvpOpponentHud.classList.remove("hidden");
+  updatePvpOpponentHud();
+  updatePvpSabotagePanel();
+}
+
+async function leavePvpRoom() {
+  const client = getSupabase();
+  const room = state.pvpRoom;
+  if (client && room) {
+    if (room.isHost) {
+      await client.from("challenge_rooms").delete().eq("room_code", room.roomCode);
+    } else {
+      await client.from("challenge_rooms")
+        .update({ guest_id: null, guest_nickname: null })
+        .eq("room_code", room.roomCode);
+    }
+  }
+  if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
+  state.pvpRoom = null;
+  state.pvpOpponent = null;
+  state.pvpDebuffs = {};
+  state.pvpSabotageCooldowns = {};
+  state.pvpNextMinigameSpeedDebuff = false;
+  dom.pvpSabotagePanel.classList.add("hidden");
+  dom.pvpOpponentHud.classList.add("hidden");
+  closeModal();
+}
+
+function broadcastPvpScore() {
+  if (!pvpChannel || !state.pvpRoom || !state.serviceStats) return;
+  pvpChannel.send({
+    type: "broadcast", event: "score_update",
+    payload: {
+      orders: state.serviceStats.completedOrders,
+      score: getChallengeRunScore(),
+    },
+  });
+}
+
+function sendSabotage(type) {
+  if (!pvpChannel || !state.pvpRoom) return;
+  const cost = PVP_SABOTAGE_COSTS[type] ?? 99;
+  if (state.coins < cost) { showToast("코인이 부족합니다."); return; }
+  const cooldownUntil = state.pvpSabotageCooldowns[type] || 0;
+  if (Date.now() < cooldownUntil) {
+    showToast(`쿨다운 중 (${Math.ceil((cooldownUntil - Date.now()) / 1000)}초)`);
+    return;
+  }
+  state.coins -= cost;
+  state.pvpSabotageCooldowns[type] = Date.now() + PVP_SABOTAGE_COOLDOWN_MS;
+  updateHud();
+  updatePvpSabotagePanel();
+
+  let extra = {};
+  if (type === "stockout") {
+    const ingredientId = PVP_STOCKOUT_INGREDIENTS[Math.floor(Math.random() * PVP_STOCKOUT_INGREDIENTS.length)];
+    extra = { ingredientId };
+    showToast(`🚫 ${INGREDIENTS.find((i) => i.id === ingredientId)?.name || ingredientId} 품절 방해 전송!`);
+  } else if (type === "recipe_swap") {
+    showToast("🔀 레시피 교체 방해 전송!");
+  } else if (type === "minigame_speed") {
+    showToast("⚡ 미니게임 방해 전송!");
+  } else if (type === "time_steal") {
+    showToast("⏱️ 시간 훔치기 방해 전송!");
+  }
+
+  pvpChannel.send({
+    type: "broadcast", event: "sabotage",
+    payload: { type, fromNickname: getProfileDisplayName(), extra },
+  });
+}
+
+function applyPvpDebuff(type, fromNickname, extra = {}) {
+  if (!state.running || state.gameOver) return;
+  if (type === "stockout") {
+    const ingredientId = extra.ingredientId || PVP_STOCKOUT_INGREDIENTS[0];
+    state.pvpDebuffs.stockout = { ingredientId, expiresAt: Date.now() + PVP_STOCKOUT_DURATION_MS };
+    const name = INGREDIENTS.find((i) => i.id === ingredientId)?.name || ingredientId;
+    showToast(`😱 ${fromNickname}이(가) ${name}을 품절시켰습니다! (30초)`);
+  } else if (type === "recipe_swap") {
+    const prev = state.orderQueue[state.orderIndex]?.recipe?.id;
+    state.orderQueue[state.orderIndex] = makeChallengeOrder(prev);
+    state.targetRecipe = state.orderQueue[state.orderIndex].recipe;
+    updateHud();
+    showToast(`😱 ${fromNickname}이(가) 목표 레시피를 바꿨습니다! → ${state.targetRecipe.name}`);
+  } else if (type === "minigame_speed") {
+    state.pvpNextMinigameSpeedDebuff = true;
+    showToast(`😱 ${fromNickname}이(가) 다음 미니게임을 빠르게 만들었습니다!`);
+  } else if (type === "time_steal") {
+    state.timeLeft = Math.max(0, state.timeLeft - 10);
+    updateHud();
+    showToast(`😱 ${fromNickname}이(가) 10초를 훔쳐갔습니다!`);
+  }
+  updatePvpDebuffNotice();
+}
+
+function endPvpGame() {
+  // 최종 점수 broadcast
+  broadcastPvpScore();
+  pvpChannel?.send({
+    type: "broadcast", event: "game_done",
+    payload: { orders: state.serviceStats?.completedOrders || 0, score: getChallengeRunScore() },
+  });
+
+  // 상대가 이미 끝났으면 바로 결과, 아니면 잠깐 대기
+  if (state.pvpOpponent?.done) {
+    showPvpResult();
+  } else {
+    state.pvpDoneWaitTimer = setTimeout(showPvpResult, PVP_RESULT_WAIT_MS);
+  }
+}
+
+function showPvpResult() {
+  if (state.pvpDoneWaitTimer) { clearTimeout(state.pvpDoneWaitTimer); state.pvpDoneWaitTimer = null; }
+  const myScore = getChallengeRunScore();
+  const myOrders = state.serviceStats?.completedOrders || 0;
+  const oppScore = state.pvpOpponent?.score ?? 0;
+  const oppOrders = state.pvpOpponent?.orders ?? 0;
+  const oppName = state.pvpRoom?.opponentNickname || "상대방";
+  const myName = getProfileDisplayName();
+  const won = myScore > oppScore || (myScore === oppScore && myOrders > oppOrders);
+  const draw = myScore === oppScore && myOrders === oppOrders;
+
+  dom.pvpSabotagePanel.classList.add("hidden");
+  dom.pvpOpponentHud.classList.add("hidden");
+  dom.hud.classList.add("hidden");
+  dom.questTracker.classList.add("hidden");
+  dom.inventoryBar.classList.add("hidden");
+
+  openModal(`
+    <div style="text-align:center">
+      <p class="eyebrow" style="margin:0">${draw ? "무승부" : won ? "🏆 승리!" : "😢 패배"}</p>
+      <h2 style="font-size:clamp(32px,6vw,64px);margin:4px 0 20px">${draw ? "비겼습니다" : won ? "이겼습니다!" : "졌습니다..."}</h2>
+      <div class="pvp-result-row pvp-result-mine ${won ? "pvp-result-winner" : ""}">
+        <span class="pvp-result-name">🐹 ${myName} (나)</span>
+        <span class="pvp-result-stat">${myOrders}주문 · <strong>${myScore}점</strong></span>
+      </div>
+      <div class="pvp-result-row ${!won && !draw ? "pvp-result-winner" : ""}">
+        <span class="pvp-result-name">🐹 ${oppName}</span>
+        <span class="pvp-result-stat">${oppOrders}주문 · <strong>${oppScore}점</strong></span>
+      </div>
+      <div class="mode-actions" style="margin-top:24px">
+        <button type="button" id="pvp-rematch-btn" class="primary-action">다시 도전</button>
+        <button type="button" id="pvp-exit-btn" class="primary-action secondary-action">나가기</button>
+      </div>
+    </div>
+  `, { stopMusic: true });
+
+  dom.modalContent.querySelector("#pvp-rematch-btn").addEventListener("click", () => {
+    closeModal(); showPvpLobby();
+  });
+  dom.modalContent.querySelector("#pvp-exit-btn").addEventListener("click", () => void leavePvpRoom());
+
+  // 개인 레코드는 일반 챌린지와 동일하게 저장
+  if (state.authUser && state.serviceStats) {
+    void saveChallengeLeaderboardEntry();
+  }
+  void leavePvpRoomSilent();
+}
+
+async function leavePvpRoomSilent() {
+  const client = getSupabase();
+  const room = state.pvpRoom;
+  if (!room) return;
+  if (client && room.isHost) {
+    await client.from("challenge_rooms").update({ status: "done" }).eq("room_code", room.roomCode);
+  }
+  if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
+  state.pvpRoom = null;
+  state.pvpOpponent = null;
+  state.pvpDebuffs = {};
+  state.pvpSabotageCooldowns = {};
+  state.pvpNextMinigameSpeedDebuff = false;
+}
+
+function updatePvpFrame(dt) {
+  if (!state.pvpRoom || !state.running) return;
+  // 주기적 점수 broadcast
+  state.pvpScoreBroadcastTimer = (state.pvpScoreBroadcastTimer || 0) + dt * 1000;
+  if (state.pvpScoreBroadcastTimer >= PVP_SCORE_BROADCAST_INTERVAL_MS) {
+    state.pvpScoreBroadcastTimer = 0;
+    broadcastPvpScore();
+  }
+  // 쿨다운 만료 체크 → 버튼 상태 갱신
+  updatePvpSabotagePanel();
+  // 디버프 만료 체크
+  const stockout = state.pvpDebuffs?.stockout;
+  if (stockout && Date.now() >= stockout.expiresAt) {
+    delete state.pvpDebuffs.stockout;
+    updatePvpDebuffNotice();
+  }
+}
+
+function updatePvpOpponentHud() {
+  if (!state.pvpOpponent) return;
+  dom.pvpOpponentName.textContent = state.pvpOpponent.nickname || "상대방";
+  dom.pvpOpponentOrders.textContent = `${state.pvpOpponent.orders}주문`;
+  dom.pvpOpponentScore.textContent = `${state.pvpOpponent.score}점`;
+}
+
+function updatePvpSabotagePanel() {
+  if (!state.pvpRoom) return;
+  dom.pvpSabotagePanel.querySelectorAll("[data-sabotage]").forEach((btn) => {
+    const type = btn.dataset.sabotage;
+    const cost = PVP_SABOTAGE_COSTS[type] ?? 99;
+    const cooldownUntil = state.pvpSabotageCooldowns[type] || 0;
+    const onCooldown = Date.now() < cooldownUntil;
+    const affordable = state.coins >= cost;
+    btn.disabled = onCooldown || !affordable || !state.running || state.gameOver;
+    const costEl = btn.querySelector(".sab-cost");
+    if (costEl) {
+      costEl.textContent = onCooldown
+        ? `${Math.ceil((cooldownUntil - Date.now()) / 1000)}s`
+        : `${cost}💰`;
+    }
+  });
+}
+
+function updatePvpDebuffNotice() {
+  const debuffs = [];
+  const stockout = state.pvpDebuffs?.stockout;
+  if (stockout && Date.now() < stockout.expiresAt) {
+    const name = INGREDIENTS.find((i) => i.id === stockout.ingredientId)?.name || stockout.ingredientId;
+    debuffs.push(`🚫 ${name} 품절 (${Math.ceil((stockout.expiresAt - Date.now()) / 1000)}s)`);
+  }
+  if (state.pvpNextMinigameSpeedDebuff) debuffs.push("⚡ 미니게임 방해 대기 중");
+  if (dom.pvpDebuffNotice) {
+    dom.pvpDebuffNotice.textContent = debuffs.join(" · ");
+    dom.pvpDebuffNotice.classList.toggle("hidden", debuffs.length === 0);
+  }
 }
 
 function recordDayHistory(won) {

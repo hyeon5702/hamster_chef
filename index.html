@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <title>햄스터 셰프</title>
-    <link rel="stylesheet" href="./styles.css?v=timer-panic-20260517" />
+    <link rel="stylesheet" href="./styles.css?v=pvp-multi-20260517" />
   </head>
   <body>
     <main id="game-root">
@@ -60,6 +60,7 @@
               </div>
             </article>
             <div class="start-utility-actions">
+              <button id="multi-button" class="primary-action secondary-action" type="button">🐹 멀티 챌린지</button>
               <button id="leaderboard-button" class="primary-action secondary-action" type="button">챌린지 랭킹</button>
               <button id="tutorial-button" class="primary-action secondary-action" type="button">튜토리얼 플레이</button>
               <button id="history-button" class="primary-action secondary-action" type="button">영업 기록</button>
@@ -82,6 +83,35 @@
           <button id="sound-toggle" class="icon-button" type="button" title="소리 전환" aria-label="소리 전환">♪</button>
         </div>
       </section>
+
+      <aside id="pvp-opponent-hud" class="pvp-opponent-hud hidden" aria-label="상대방 현황">
+        <div class="pvp-opponent-label">🐹 <span id="pvp-opponent-name">상대방</span></div>
+        <div class="pvp-opponent-stats">
+          <span id="pvp-opponent-orders">0주문</span>
+          <strong id="pvp-opponent-score">0점</strong>
+        </div>
+        <div id="pvp-debuff-notice" class="pvp-debuff-notice hidden"></div>
+      </aside>
+
+      <aside id="pvp-sabotage-panel" class="pvp-sabotage-panel hidden" aria-label="방해하기">
+        <div class="pvp-sabotage-title">⚡ 방해하기</div>
+        <button class="pvp-sabotage-btn" data-sabotage="stockout" type="button">
+          <span class="sab-label">재료 품절</span>
+          <span class="sab-cost">15💰</span>
+        </button>
+        <button class="pvp-sabotage-btn" data-sabotage="recipe_swap" type="button">
+          <span class="sab-label">레시피 교체</span>
+          <span class="sab-cost">20💰</span>
+        </button>
+        <button class="pvp-sabotage-btn" data-sabotage="minigame_speed" type="button">
+          <span class="sab-label">미니게임 방해</span>
+          <span class="sab-cost">18💰</span>
+        </button>
+        <button class="pvp-sabotage-btn" data-sabotage="time_steal" type="button">
+          <span class="sab-label">시간 훔치기</span>
+          <span class="sab-cost">25💰</span>
+        </button>
+      </aside>
 
       <aside id="quest-tracker" class="quest-tracker hidden" aria-label="진행 중인 일">
         <span class="tracker-label">현재 일</span>
@@ -132,6 +162,6 @@
       <div id="toast" class="toast hidden" role="status"></div>
     </main>
 
-    <script type="module" src="./src/main.js?v=timer-panic-20260517"></script>
+    <script type="module" src="./src/main.js?v=pvp-multi-20260517"></script>
   </body>
 </html>
