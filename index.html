@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <title>햄스터 셰프</title>
-    <link rel="stylesheet" href="./styles.css?v=pvp-multi-20260517" />
+    <link rel="stylesheet" href="./styles.css?v=pvp-defuse-minigame-20260518" />
   </head>
   <body>
     <main id="game-root">
@@ -81,23 +81,47 @@
 
       <aside id="pvp-sabotage-panel" class="pvp-sabotage-panel hidden" aria-label="방해하기">
         <div class="pvp-sabotage-title">⚡ 방해하기</div>
-        <button class="pvp-sabotage-btn" data-sabotage="stockout" type="button">
-          <span class="sab-label">재료 품절</span>
-          <span class="sab-cost">15💰</span>
-        </button>
-        <button class="pvp-sabotage-btn" data-sabotage="recipe_swap" type="button">
-          <span class="sab-label">레시피 교체</span>
+        <button class="pvp-sabotage-btn" data-sabotage="trip" type="button">
+          <span class="sab-label">넘어뜨리기 🌀</span>
           <span class="sab-cost">20💰</span>
         </button>
-        <button class="pvp-sabotage-btn" data-sabotage="minigame_speed" type="button">
-          <span class="sab-label">미니게임 방해</span>
-          <span class="sab-cost">18💰</span>
+        <button class="pvp-sabotage-btn" data-sabotage="ink" type="button">
+          <span class="sab-label">먹물 뿌리기 🖤</span>
+          <span class="sab-cost">20💰</span>
         </button>
-        <button class="pvp-sabotage-btn" data-sabotage="time_steal" type="button">
-          <span class="sab-label">시간 훔치기</span>
+        <button class="pvp-sabotage-btn" data-sabotage="bomb" type="button">
+          <span class="sab-label">폭탄 투척 💣</span>
           <span class="sab-cost">25💰</span>
         </button>
       </aside>
+
+      <!-- PvP 이펙트 레이어 -->
+      <div id="pvp-red-flash" class="pvp-red-flash hidden"></div>
+      <div id="pvp-tilt-wrap" class="pvp-tilt-wrap">
+        <div id="pvp-stars-overlay" class="pvp-stars-overlay hidden">💫 ⭐ 💫</div>
+      </div>
+      <div id="pvp-ink-overlay" class="pvp-ink-overlay hidden"></div>
+      <div id="pvp-bomb-hud" class="pvp-bomb-hud hidden">
+        <span>💣 폭탄 해제까지</span>
+        <strong id="pvp-bomb-timer">30</strong>초
+      </div>
+
+      <!-- 폭탄 해제 미니게임 -->
+      <div id="defuse-minigame" class="defuse-minigame hidden" aria-label="폭탄 해제">
+        <p class="defuse-title">💣 폭탄 해제</p>
+        <div class="defuse-hits">
+          <div class="defuse-hit"></div>
+          <div class="defuse-hit"></div>
+          <div class="defuse-hit"></div>
+        </div>
+        <div class="defuse-track-wrap">
+          <div class="defuse-track">
+            <div class="defuse-zone" id="defuse-zone"></div>
+            <div class="defuse-cursor" id="defuse-cursor"></div>
+          </div>
+        </div>
+        <button id="defuse-action-btn" class="primary-action" type="button">해제 (E)</button>
+      </div>
 
       <aside id="quest-tracker" class="quest-tracker hidden" aria-label="진행 중인 일">
         <span class="tracker-label">현재 일</span>
@@ -148,6 +172,6 @@
       <div id="toast" class="toast hidden" role="status"></div>
     </main>
 
-    <script type="module" src="./src/main.js?v=pvp-multi-20260517"></script>
+    <script type="module" src="./src/main.js?v=pvp-defuse-minigame-20260518"></script>
   </body>
 </html>

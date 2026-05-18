@@ -64,6 +64,12 @@ const dom = {
   pvpOpponentScore: document.querySelector("#pvp-opponent-score"),
   pvpDebuffNotice: document.querySelector("#pvp-debuff-notice"),
   pvpSabotagePanel: document.querySelector("#pvp-sabotage-panel"),
+  pvpRedFlash: document.querySelector("#pvp-red-flash"),
+  pvpTiltWrap: document.querySelector("#pvp-tilt-wrap"),
+  pvpStarsOverlay: document.querySelector("#pvp-stars-overlay"),
+  pvpInkOverlay: document.querySelector("#pvp-ink-overlay"),
+  pvpBombHud: document.querySelector("#pvp-bomb-hud"),
+  pvpBombTimer: document.querySelector("#pvp-bomb-timer"),
 };
 
 const INGREDIENTS = [
@@ -217,10 +223,12 @@ const PANIC_BGM_PATH = "./assets/audio/minute-de-panique.mp3";
 const PANIC_BGM_THRESHOLD = 60; // 남은 시간(초) 이하일 때 긴박한 BGM 전환
 
 // PvP 멀티 챌린지
-const PVP_SABOTAGE_COSTS = { stockout: 15, recipe_swap: 20, minigame_speed: 18, time_steal: 25 };
+const PVP_SABOTAGE_COSTS = { trip: 20, ink: 20, bomb: 25 };
 const PVP_SABOTAGE_COOLDOWN_MS = 12000;
-const PVP_STOCKOUT_DURATION_MS = 30000;
-const PVP_STOCKOUT_INGREDIENTS = ["cheese", "cream", "mushroom", "carrot", "berry", "herb", "pepper"];
+const PVP_TRIP_DURATION_MS = 5000;
+const PVP_INK_DURATION_MS = 5000;
+const PVP_BOMB_DURATION_MS = 30000;
+const PVP_BOMB_PENALTY_SLOW_MS = 15000;
 const PVP_SCORE_BROADCAST_INTERVAL_MS = 2500;
 const PVP_ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PVP_RESULT_WAIT_MS = 5000;
@@ -444,13 +452,15 @@ const state = {
   authBannerType: "warning",
   gameMode: "challenge",
   // PvP
-  pvpRoom: null,       // { roomCode, isHost, opponentId, opponentNickname }
-  pvpOpponent: null,   // { nickname, orders, score, done }
-  pvpDebuffs: {},      // { stockout: { ingredientId, expiresAt }, minigame_speed: expiresAt }
+  pvpRoom: null,         // { roomCode, isHost, opponentId, opponentNickname }
+  pvpOpponent: null,     // { nickname, orders, score, done }
   pvpSabotageCooldowns: {},  // { type: expiryTimestamp }
-  pvpNextMinigameSpeedDebuff: false,
   pvpScoreBroadcastTimer: 0,
   pvpDoneWaitTimer: null,
+  pvpTripUntil: 0,       // timestamp: 이동 불가 종료 시점
+  pvpSlowUntil: 0,       // timestamp: 이동속도 50% 감소 종료 시점
+  pvpBomb: null,         // { mesh, interactable, expiresAt } | null
+  pvpInkActive: false,
 };
 
 const keys = new Set();
@@ -984,6 +994,7 @@ function setupInput() {
   dom.challengeLbExit.addEventListener("click", exitChallengeLeaderboardScreen);
   dom.closeModal.addEventListener("click", closeModal);
   dom.interactionButton.addEventListener("click", interact);
+  document.getElementById("defuse-action-btn")?.addEventListener("click", attemptDefuseHit);
   dom.recipeNoteButton.addEventListener("click", openRecipeNote);
   dom.soundToggle.addEventListener("click", toggleSound);
   dom.tutorialExit.addEventListener("click", () => endTutorialMode("튜토리얼을 종료했습니다."));
@@ -1058,6 +1069,7 @@ function setupInput() {
     }
 
     if (event.key.toLowerCase() === "e" || event.key === "Enter") {
+      if (defuseMiniGame) { attemptDefuseHit(); return; }
       if (!state.modalOpen && state.running) interact();
     }
 
@@ -3293,6 +3305,15 @@ function animate() {
 
 function updatePlayer(dt) {
   if (state.modalOpen) return;
+  if (state.pvpTripUntil && Date.now() < state.pvpTripUntil) {
+    // 넘어뜨리기 스턴 — 이동 불가, 캐릭터 흔들기
+    player.rotation.z = Math.sin(performance.now() * 0.018) * 0.45;
+    return;
+  }
+  if (state.pvpTripUntil && Date.now() >= state.pvpTripUntil) {
+    state.pvpTripUntil = 0;
+    player.rotation.z = 0;
+  }
 
   const dir = new THREE.Vector3();
   if (keys.has("w") || keys.has("arrowup")) dir.z -= 1;
@@ -3303,7 +3324,8 @@ function updatePlayer(dt) {
   if (dir.lengthSq() > 0) {
     dir.normalize();
     const speedMultiplier = 1 + getUpgradeLevel("shoes") * 0.12;
-    const speed = (keys.has("shift") ? 5.4 : 3.6) * speedMultiplier;
+    const slowPenalty = (state.pvpSlowUntil && Date.now() < state.pvpSlowUntil) ? 0.5 : 1;
+    const speed = (keys.has("shift") ? 5.4 : 3.6) * speedMultiplier * slowPenalty;
     player.position.addScaledVector(dir, speed * dt);
     player.position.x = THREE.MathUtils.clamp(player.position.x, boundaries.minX, boundaries.maxX);
     player.position.z = THREE.MathUtils.clamp(player.position.z, boundaries.minZ, boundaries.maxZ);
@@ -6662,14 +6684,31 @@ async function leavePvpRoom() {
     }
   }
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
+  clearPvpDebuffs();
   state.pvpRoom = null;
   state.pvpOpponent = null;
-  state.pvpDebuffs = {};
   state.pvpSabotageCooldowns = {};
-  state.pvpNextMinigameSpeedDebuff = false;
   dom.pvpSabotagePanel.classList.add("hidden");
   dom.pvpOpponentHud.classList.add("hidden");
-  closeModal();
+  closeModal(false, true);
+
+  // 게임이 끝난 상태면 시작 화면으로
+  if (state.gameOver || !state.running) {
+    state.running = false;
+    state.gameOver = false;
+    state.paused = false;
+    dom.hud.classList.add("hidden");
+    dom.questTracker.classList.add("hidden");
+    dom.inventoryBar.classList.add("hidden");
+    dom.interactionPrompt.classList.add("hidden");
+    dom.resultScreen.classList.add("hidden");
+    dom.challengeLbScreen.classList.add("hidden");
+    dom.startScreen.classList.remove("hidden");
+    dom.startScreen.classList.add("screen-visible");
+    loadProgress();
+    refreshStartActions();
+    updateHud();
+  }
 }
 
 function broadcastPvpScore() {
@@ -6697,47 +6736,217 @@ function sendSabotage(type) {
   updateHud();
   updatePvpSabotagePanel();
 
-  let extra = {};
-  if (type === "stockout") {
-    const ingredientId = PVP_STOCKOUT_INGREDIENTS[Math.floor(Math.random() * PVP_STOCKOUT_INGREDIENTS.length)];
-    extra = { ingredientId };
-    showToast(`🚫 ${INGREDIENTS.find((i) => i.id === ingredientId)?.name || ingredientId} 품절 방해 전송!`);
-  } else if (type === "recipe_swap") {
-    showToast("🔀 레시피 교체 방해 전송!");
-  } else if (type === "minigame_speed") {
-    showToast("⚡ 미니게임 방해 전송!");
-  } else if (type === "time_steal") {
-    showToast("⏱️ 시간 훔치기 방해 전송!");
-  }
+  const labels = { trip: "넘어뜨리기 🌀", ink: "먹물 뿌리기 🖤", bomb: "폭탄 투척 💣" };
+  showToast(`${labels[type] || type} 방해 전송!`);
 
   pvpChannel.send({
     type: "broadcast", event: "sabotage",
-    payload: { type, fromNickname: getProfileDisplayName(), extra },
+    payload: { type, fromNickname: getProfileDisplayName() },
   });
 }
 
-function applyPvpDebuff(type, fromNickname, extra = {}) {
+function applyPvpDebuff(type, fromNickname) {
   if (!state.running || state.gameOver) return;
-  if (type === "stockout") {
-    const ingredientId = extra.ingredientId || PVP_STOCKOUT_INGREDIENTS[0];
-    state.pvpDebuffs.stockout = { ingredientId, expiresAt: Date.now() + PVP_STOCKOUT_DURATION_MS };
-    const name = INGREDIENTS.find((i) => i.id === ingredientId)?.name || ingredientId;
-    showToast(`😱 ${fromNickname}이(가) ${name}을 품절시켰습니다! (30초)`);
-  } else if (type === "recipe_swap") {
-    const prev = state.orderQueue[state.orderIndex]?.recipe?.id;
-    state.orderQueue[state.orderIndex] = makeChallengeOrder(prev);
-    state.targetRecipe = state.orderQueue[state.orderIndex].recipe;
-    updateHud();
-    showToast(`😱 ${fromNickname}이(가) 목표 레시피를 바꿨습니다! → ${state.targetRecipe.name}`);
-  } else if (type === "minigame_speed") {
-    state.pvpNextMinigameSpeedDebuff = true;
-    showToast(`😱 ${fromNickname}이(가) 다음 미니게임을 빠르게 만들었습니다!`);
-  } else if (type === "time_steal") {
-    state.timeLeft = Math.max(0, state.timeLeft - 10);
-    updateHud();
-    showToast(`😱 ${fromNickname}이(가) 10초를 훔쳐갔습니다!`);
+  if (type === "trip") {
+    state.pvpTripUntil = Date.now() + PVP_TRIP_DURATION_MS;
+    showToast(`😵 ${fromNickname}이(가) 넘어뜨렸습니다! 5초간 이동 불가`);
+    playTripEffect();
+  } else if (type === "ink") {
+    showToast(`🖤 ${fromNickname}이(가) 먹물을 뿌렸습니다!`);
+    playInkEffect();
+  } else if (type === "bomb") {
+    showToast(`💣 ${fromNickname}이(가) 폭탄을 던졌습니다! 30초 안에 해제하세요!`);
+    spawnPvpBomb();
   }
-  updatePvpDebuffNotice();
+}
+
+// ── 넘어뜨리기 이펙트 ──
+function playTripEffect() {
+  // 1. 빨간 플래시
+  dom.pvpRedFlash.classList.remove("hidden");
+  dom.pvpRedFlash.classList.add("pvp-flash-anim");
+  setTimeout(() => {
+    dom.pvpRedFlash.classList.add("hidden");
+    dom.pvpRedFlash.classList.remove("pvp-flash-anim");
+  }, 600);
+
+  // 2. 화면 기울기
+  const root = document.getElementById("game-root");
+  root.classList.add("pvp-tilt-anim");
+  setTimeout(() => root.classList.remove("pvp-tilt-anim"), 700);
+
+  // 3. 💫 별 오버레이 (스턴 지속시간 동안)
+  dom.pvpStarsOverlay.classList.remove("hidden");
+  setTimeout(() => dom.pvpStarsOverlay.classList.add("hidden"), PVP_TRIP_DURATION_MS);
+}
+
+// ── 먹물 이펙트 ──
+function playInkEffect() {
+  if (state.pvpInkActive) return;
+  state.pvpInkActive = true;
+  const overlay = dom.pvpInkOverlay;
+  overlay.innerHTML = "";
+  // 랜덤 위치에 먹물 블롭 8개 생성
+  for (let i = 0; i < 8; i++) {
+    const blob = document.createElement("div");
+    blob.className = "pvp-ink-blob";
+    blob.style.left = `${5 + Math.random() * 80}%`;
+    blob.style.top = `${5 + Math.random() * 80}%`;
+    blob.style.width = `${80 + Math.random() * 120}px`;
+    blob.style.height = blob.style.width;
+    blob.style.animationDelay = `${Math.random() * 0.3}s`;
+    overlay.appendChild(blob);
+  }
+  overlay.classList.remove("hidden");
+  setTimeout(() => {
+    overlay.classList.add("pvp-ink-fade-out");
+    setTimeout(() => {
+      overlay.classList.add("hidden");
+      overlay.classList.remove("pvp-ink-fade-out");
+      overlay.innerHTML = "";
+      state.pvpInkActive = false;
+    }, 600);
+  }, PVP_INK_DURATION_MS);
+}
+
+// ── 폭탄 생성/해제 ──
+function spawnPvpBomb() {
+  if (state.pvpBomb) removePvpBomb(); // 기존 폭탄 제거
+  // 랜덤 위치 (장애물 피해서)
+  const positions = [
+    [-3, 0, 2], [3, 0, 2], [0, 0, 3.5], [-4, 0, 0], [4, 0, 0],
+    [-2, 0, -1], [2, 0, -1], [0, 0, -2],
+  ];
+  const [bx, by, bz] = positions[Math.floor(Math.random() * positions.length)];
+
+  const group = new THREE.Group();
+  // 몸통
+  const body = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a1a }),
+  );
+  // 도화선
+  const fuse = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.025, 0.025, 0.25),
+    new THREE.MeshStandardMaterial({ color: 0x8b4513 }),
+  );
+  fuse.position.set(0.05, 0.28, 0);
+  fuse.rotation.z = 0.3;
+  // 반짝이는 불꽃 (작은 구)
+  const spark = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xff4400, emissiveIntensity: 1.2 }),
+  );
+  spark.position.set(0.12, 0.48, 0);
+  group.add(body, fuse, spark);
+  group.position.set(bx, by + 0.28, bz);
+  scene.add(group);
+
+  const interactable = {
+    label: "💣 폭탄 해제",
+    position: group.position,
+    radius: 2.2,
+    action: defusePvpBomb,
+  };
+  interactables.push(interactable);
+
+  state.pvpBomb = { mesh: group, spark, interactable, expiresAt: Date.now() + PVP_BOMB_DURATION_MS };
+  dom.pvpBombHud.classList.remove("hidden");
+}
+
+let defuseMiniGame = null; // { raf, hits, cursorPos, cursorDir, speed, zoneLeft, zoneRight, lastTime }
+
+function defusePvpBomb() {
+  if (defuseMiniGame) return;
+  openDefuseMinigame();
+}
+
+function openDefuseMinigame() {
+  const zoneCenter = 0.35 + Math.random() * 0.30;
+  const zoneHalf = 0.09;
+  defuseMiniGame = {
+    hits: 0, cursorPos: 0, cursorDir: 1,
+    speed: 0.35,
+    zoneLeft: zoneCenter - zoneHalf,
+    zoneRight: zoneCenter + zoneHalf,
+    lastTime: performance.now(),
+    raf: null,
+  };
+
+  const el = document.getElementById("defuse-minigame");
+  const zone = document.getElementById("defuse-zone");
+  zone.style.left = `${defuseMiniGame.zoneLeft * 100}%`;
+  zone.style.width = `${zoneHalf * 2 * 100}%`;
+  document.querySelectorAll(".defuse-hit").forEach(h => h.classList.remove("active"));
+  el.classList.remove("hidden");
+
+  function tick(now) {
+    if (!defuseMiniGame) return;
+    const dt = Math.min((now - defuseMiniGame.lastTime) / 1000, 0.05);
+    defuseMiniGame.lastTime = now;
+    defuseMiniGame.cursorPos += defuseMiniGame.cursorDir * defuseMiniGame.speed * dt;
+    if (defuseMiniGame.cursorPos >= 1) { defuseMiniGame.cursorPos = 1; defuseMiniGame.cursorDir = -1; }
+    if (defuseMiniGame.cursorPos <= 0) { defuseMiniGame.cursorPos = 0; defuseMiniGame.cursorDir = 1; }
+    const cursor = document.getElementById("defuse-cursor");
+    if (cursor) cursor.style.left = `${defuseMiniGame.cursorPos * 100}%`;
+    defuseMiniGame.raf = requestAnimationFrame(tick);
+  }
+  defuseMiniGame.raf = requestAnimationFrame(tick);
+}
+
+function attemptDefuseHit() {
+  if (!defuseMiniGame) return;
+  const { cursorPos, zoneLeft, zoneRight } = defuseMiniGame;
+
+  if (cursorPos >= zoneLeft && cursorPos <= zoneRight) {
+    defuseMiniGame.hits++;
+    defuseMiniGame.speed += 0.15;
+
+    const zone = document.getElementById("defuse-zone");
+    zone?.classList.add("defuse-zone-hit");
+    setTimeout(() => zone?.classList.remove("defuse-zone-hit"), 250);
+
+    const hitEls = document.querySelectorAll(".defuse-hit");
+    hitEls[defuseMiniGame.hits - 1]?.classList.add("active");
+
+    if (defuseMiniGame.hits >= 3) {
+      closeDefuseMinigame();
+      showToast("💣 폭탄 해제 성공!");
+      removePvpBomb();
+    }
+  } else {
+    const cursor = document.getElementById("defuse-cursor");
+    cursor?.classList.add("defuse-cursor-miss");
+    setTimeout(() => cursor?.classList.remove("defuse-cursor-miss"), 250);
+  }
+}
+
+function closeDefuseMinigame() {
+  if (!defuseMiniGame) return;
+  cancelAnimationFrame(defuseMiniGame.raf);
+  defuseMiniGame = null;
+  document.getElementById("defuse-minigame")?.classList.add("hidden");
+}
+
+function removePvpBomb() {
+  if (!state.pvpBomb) return;
+  scene.remove(state.pvpBomb.mesh);
+  const idx = interactables.indexOf(state.pvpBomb.interactable);
+  if (idx >= 0) interactables.splice(idx, 1);
+  state.pvpBomb = null;
+  dom.pvpBombHud.classList.add("hidden");
+}
+
+function clearPvpDebuffs() {
+  state.pvpTripUntil = 0;
+  state.pvpSlowUntil = 0;
+  state.pvpInkActive = false;
+  player && (player.rotation.z = 0);
+  closeDefuseMinigame();
+  removePvpBomb();
+  dom.pvpStarsOverlay?.classList.add("hidden");
+  dom.pvpInkOverlay?.classList.add("hidden");
+  dom.pvpBombHud?.classList.add("hidden");
 }
 
 function endPvpGame() {
@@ -6812,11 +7021,10 @@ async function leavePvpRoomSilent() {
     await client.from("challenge_rooms").update({ status: "done" }).eq("room_code", room.roomCode);
   }
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
+  clearPvpDebuffs();
   state.pvpRoom = null;
   state.pvpOpponent = null;
-  state.pvpDebuffs = {};
   state.pvpSabotageCooldowns = {};
-  state.pvpNextMinigameSpeedDebuff = false;
 }
 
 function updatePvpFrame(dt) {
@@ -6829,12 +7037,20 @@ function updatePvpFrame(dt) {
   }
   // 쿨다운 만료 체크 → 버튼 상태 갱신
   updatePvpSabotagePanel();
-  // 디버프 만료 체크
-  const stockout = state.pvpDebuffs?.stockout;
-  if (stockout && Date.now() >= stockout.expiresAt) {
-    delete state.pvpDebuffs.stockout;
-    updatePvpDebuffNotice();
+  // 폭탄 타이머 체크
+  if (state.pvpBomb) {
+    const remaining = Math.ceil((state.pvpBomb.expiresAt - Date.now()) / 1000);
+    if (dom.pvpBombTimer) dom.pvpBombTimer.textContent = Math.max(0, remaining);
+    if (Date.now() >= state.pvpBomb.expiresAt) {
+      // 시간 초과 → 패널티: 15초간 이동속도 50% 감소
+      closeDefuseMinigame();
+      state.pvpSlowUntil = Date.now() + PVP_BOMB_PENALTY_SLOW_MS;
+      updateHud();
+      showToast("💥 폭탄 폭발! 15초간 이동속도 50% 감소");
+      removePvpBomb();
+    }
   }
+  updatePvpDebuffNotice();
 }
 
 function updatePvpOpponentHud() {

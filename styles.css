@@ -2978,8 +2978,8 @@ button {
 /* 상대방 HUD */
 .pvp-opponent-hud {
   position: fixed;
-  top: 72px;
-  right: 16px;
+  top: 112px;
+  right: 18px;
   background: rgba(18, 12, 6, 0.82);
   color: #fff8e8;
   border: 1px solid rgba(255,200,80,0.35);
@@ -3016,8 +3016,8 @@ button {
 /* 방해 패널 */
 .pvp-sabotage-panel {
   position: fixed;
-  bottom: 110px;
-  left: 16px;
+  bottom: 150px;
+  right: 18px;
   background: rgba(18, 12, 6, 0.88);
   border: 1px solid rgba(255, 100, 80, 0.4);
   border-radius: 12px;
@@ -3149,4 +3149,194 @@ button {
   font-size: 24px;
   text-align: center;
   letter-spacing: 6px;
+}
+
+/* PvP 방해 이펙트 */
+.pvp-red-flash {
+  position: fixed;
+  inset: 0;
+  background: rgba(220, 30, 30, 0.55);
+  pointer-events: none;
+  z-index: 9000;
+  opacity: 0;
+}
+.pvp-flash-anim {
+  animation: pvpFlash 0.6s ease-out forwards;
+}
+@keyframes pvpFlash {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 넘어뜨리기: 화면 기울기 */
+.pvp-tilt-anim {
+  animation: pvpTilt 0.7s ease-in-out;
+}
+@keyframes pvpTilt {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(-15deg); }
+  45%  { transform: rotate(12deg); }
+  65%  { transform: rotate(-8deg); }
+  80%  { transform: rotate(5deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* 넘어뜨리기: 별 오버레이 */
+.pvp-tilt-wrap {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9010;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+}
+.pvp-stars-overlay {
+  font-size: 36px;
+  letter-spacing: 12px;
+  animation: pvpStarsSpin 0.9s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 220, 50, 0.8));
+}
+@keyframes pvpStarsSpin {
+  from { transform: rotate(-10deg) scale(1); }
+  50%  { transform: rotate(10deg) scale(1.15); }
+  to   { transform: rotate(-10deg) scale(1); }
+}
+
+/* 먹물 뿌리기 */
+.pvp-ink-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9020;
+}
+.pvp-ink-blob {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, #0a0a0a 55%, rgba(10,10,10,0.5) 100%);
+  transform: scale(0);
+  animation: pvpInkAppear 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes pvpInkAppear {
+  to { transform: scale(1); }
+}
+.pvp-ink-fade-out .pvp-ink-blob {
+  animation: pvpInkDisappear 0.6s ease-in forwards;
+}
+@keyframes pvpInkDisappear {
+  to { transform: scale(0); opacity: 0; }
+}
+
+/* 폭탄 HUD */
+.pvp-bomb-hud {
+  position: fixed;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 10, 10, 0.92);
+  border: 2px solid #d93d3d;
+  border-radius: 12px;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 9030;
+  box-shadow: 0 0 16px rgba(217, 61, 61, 0.5);
+  animation: pvpBombPulse 1s ease-in-out infinite;
+}
+.pvp-bomb-hud strong {
+  font-size: 22px;
+  color: #ff6b6b;
+  min-width: 28px;
+  text-align: center;
+}
+@keyframes pvpBombPulse {
+  0%, 100% { box-shadow: 0 0 16px rgba(217, 61, 61, 0.5); }
+  50%       { box-shadow: 0 0 28px rgba(217, 61, 61, 0.9); }
+}
+
+/* 폭탄 해제 미니게임 */
+.defuse-minigame {
+  position: fixed;
+  bottom: 180px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(18, 12, 12, 0.96);
+  border: 2px solid #d93d3d;
+  border-radius: 16px;
+  padding: 18px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  z-index: 9040;
+  min-width: 320px;
+  box-shadow: 0 0 32px rgba(217, 61, 61, 0.4);
+}
+.defuse-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+.defuse-hits {
+  display: flex;
+  gap: 10px;
+}
+.defuse-hit {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.defuse-hit.active {
+  background: #06d6a0;
+  border-color: #06d6a0;
+  box-shadow: 0 0 8px rgba(6, 214, 160, 0.7);
+}
+.defuse-track-wrap {
+  width: 100%;
+  padding: 4px 0;
+}
+.defuse-track {
+  position: relative;
+  width: 100%;
+  height: 28px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.defuse-zone {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(6, 214, 160, 0.35);
+  border-left: 2px solid #06d6a0;
+  border-right: 2px solid #06d6a0;
+  transition: background 0.15s;
+}
+.defuse-zone.defuse-zone-hit {
+  background: rgba(6, 214, 160, 0.75);
+}
+.defuse-cursor {
+  position: absolute;
+  top: 4px;
+  width: 6px;
+  height: 20px;
+  background: #fff;
+  border-radius: 3px;
+  transform: translateX(-50%);
+  box-shadow: 0 0 6px rgba(255,255,255,0.8);
+  transition: background 0.1s;
+}
+.defuse-cursor.defuse-cursor-miss {
+  background: #ff6b6b;
+  box-shadow: 0 0 8px rgba(255, 107, 107, 0.9);
 }
