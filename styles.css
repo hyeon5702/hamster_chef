@@ -3348,3 +3348,117 @@ button {
   background: #ff6b6b;
   box-shadow: 0 0 8px rgba(255, 107, 107, 0.9);
 }
+
+
+/* 스킨 선택 그리드 */
+/* ── 스킨 선택 ── */
+.skin-selector-wrap {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+.skin-preview-pane {
+  flex-shrink: 0;
+  width: 200px;
+  height: 300px;
+  background: rgba(36,31,33,0.06);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1.5px solid rgba(36,31,33,0.10);
+}
+#skin-preview-canvas {
+  display: block;
+  width: 200px;
+  height: 300px;
+}
+.skin-list-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.skin-list-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: rgba(36,31,33,0.06);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit;
+  text-align: left;
+}
+.skin-list-card:hover {
+  background: rgba(36,31,33,0.12);
+  border-color: rgba(36,31,33,0.2);
+}
+.skin-list-card.skin-card-selected {
+  border-color: var(--accent, #ef5b4f);
+  background: rgba(239,91,79,0.08);
+}
+.skin-list-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.skin-card-dot {
+  width: 12px; height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0,0,0,0.12);
+}
+.skin-card-check {
+  font-size: 13px;
+  color: var(--accent, #ef5b4f);
+  font-weight: 700;
+}
+@media (max-width: 520px) {
+  .skin-selector-wrap {
+    flex-direction: column;
+    align-items: center;
+  }
+  .skin-preview-pane {
+    width: 160px;
+    height: 220px;
+  }
+  #skin-preview-canvas {
+    width: 160px !important;
+    height: 220px !important;
+  }
+  .skin-list-pane {
+    width: 100%;
+    max-height: none;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+/* 기존 grid 카드 (하위 호환) */
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.skin-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 8px 10px;
+  background: rgba(36,31,33,0.06);
+  border: 2px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit;
+}
+.skin-card:hover { background: rgba(36,31,33,0.12); border-color: rgba(36,31,33,0.2); }
+.skin-card-selected { border-color: var(--accent, #ef5b4f); background: rgba(239,91,79,0.08); }
+.skin-card-emoji { font-size: 28px; line-height: 1; }
+.skin-card-name  { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; }

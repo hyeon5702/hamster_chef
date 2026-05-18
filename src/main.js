@@ -58,6 +58,7 @@ const dom = {
   challengeLbExit: document.querySelector("#challenge-lb-exit"),
   toast: document.querySelector("#toast"),
   multiButton: document.querySelector("#multi-button"),
+  skinButton: document.querySelector("#skin-button"),
   pvpOpponentHud: document.querySelector("#pvp-opponent-hud"),
   pvpOpponentName: document.querySelector("#pvp-opponent-name"),
   pvpOpponentOrders: document.querySelector("#pvp-opponent-orders"),
@@ -200,6 +201,15 @@ const DAY_ORDER_COUNT = 3;
 const ORDER_SCORE_STEPS = [75, 80, 85, 90];
 const ORDER_COMPLETION_REWARD = 18;
 const LEGACY_SAVE_KEY = "hamster-chef-save-v1";
+const SKIN_SAVE_KEY = "hamster-chef-skin-v1";
+const SKINS = [
+  { id: "default", name: "기본 햄스터",  emoji: "🐹", primary: "#d99b61" },
+  { id: "cat",     name: "고양이 셰프",  emoji: "🐱", primary: "#e8a060" },
+  { id: "rabbit",  name: "토끼 셰프",    emoji: "🐰", primary: "#e8e0d4" },
+  { id: "robot",   name: "로봇 셰프",    emoji: "🤖", primary: "#6090b8" },
+  { id: "devil",   name: "악당 셰프",    emoji: "😈", primary: "#c03030" },
+  { id: "wizard",  name: "마법사 셰프",  emoji: "🧙", primary: "#5c3a8a" },
+];
 const SHARED_SETTINGS_KEY = "hamster-chef-shared-settings-v1";
 const CHALLENGE_SAVE_KEY = "hamster-chef-challenge-save-v1";
 const CAREER_SAVE_KEY = "hamster-chef-career-save-v1";
@@ -410,9 +420,14 @@ const GREENHOUSE_CROPS = [
   { ingredientId: "mini-tomato", name: "미니 토마토 화분", unlockDay: 7, yieldAmount: 3 },
 ];
 
+function normalizeSkinId(skinId) {
+  return SKINS.some((skin) => skin.id === skinId) ? skinId : "default";
+}
+
 const state = {
   running: false,
   gameOver: false,
+  selectedSkin: normalizeSkinId(localStorage.getItem(SKIN_SAVE_KEY) || "default"),
   paused: false,
   modalOpen: false,
   modalStopsMusic: false,
@@ -914,52 +929,213 @@ function createCareerRegionDecor() {
 }
 
 function createPlayer() {
-  player = new THREE.Group();
+  player = buildSkinMesh(state.selectedSkin || "default");
   player.position.set(0, 0, 0);
+  scene.add(player);
+}
 
-  const body = mesh(new THREE.SphereGeometry(0.56, 20, 14), mat("#d99b61"), [0, 0.62, 0]);
-  body.scale.set(1.02, 0.96, 0.88);
-  player.add(body);
+function rebuildPlayer() {
+  const pos = player?.position.clone();
+  const rotY = player?.rotation.y ?? 0;
+  if (player) scene.remove(player);
+  player = buildSkinMesh(state.selectedSkin || "default");
+  if (pos) player.position.copy(pos);
+  player.rotation.y = rotY;
+  scene.add(player);
+}
 
-  const belly = mesh(new THREE.SphereGeometry(0.38, 16, 12), mat("#ffe2ae"), [0, 0.54, 0.35]);
-  belly.scale.set(1, 0.86, 0.52);
-  player.add(belly);
+function addChefHat(g, baseColor = "#fff8e8", puffColor = "#ffffff", py = 1.58) {
+  g.add(mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.22, 18), mat(baseColor), [0, py, 0.02]));
+  for (const ox of [-0.18, 0, 0.18])
+    g.add(mesh(new THREE.SphereGeometry(0.17, 12, 8), mat(puffColor), [ox, py + 0.16, 0.02]));
+}
 
-  const head = mesh(new THREE.SphereGeometry(0.44, 20, 14), mat("#e5aa72"), [0, 1.18, 0.08]);
-  player.add(head);
+function buildSkinMesh(skinId) {
+  const g = new THREE.Group();
 
-  const snout = mesh(new THREE.SphereGeometry(0.17, 12, 10), mat("#ffe2ae"), [0, 1.12, 0.46]);
-  snout.scale.set(1.2, 0.78, 0.76);
-  player.add(snout);
+  if (skinId === "cat") {
+    // ── 고양이 셰프 ──
+    const body = mesh(new THREE.SphereGeometry(0.54, 20, 14), mat("#e8a060"), [0, 0.62, 0]);
+    body.scale.set(1.0, 0.95, 0.86); g.add(body);
+    const belly = mesh(new THREE.SphereGeometry(0.36, 16, 12), mat("#ffd8a0"), [0, 0.54, 0.33]);
+    belly.scale.set(1, 0.88, 0.55); g.add(belly);
+    const head = mesh(new THREE.SphereGeometry(0.43, 20, 14), mat("#e8a060"), [0, 1.18, 0.06]); g.add(head);
+    const snout = mesh(new THREE.SphereGeometry(0.16, 12, 10), mat("#ffd8a0"), [0, 1.12, 0.44]);
+    snout.scale.set(1.1, 0.75, 0.72); g.add(snout);
+    // 꼬리
+    const tail = mesh(new THREE.SphereGeometry(0.18, 12, 8), mat("#e8a060"), [0, 0.42, -0.54]);
+    tail.scale.set(0.55, 0.55, 1.1); g.add(tail);
+    for (const side of [-1, 1]) {
+      // 삼각 귀
+      const ear = mesh(new THREE.ConeGeometry(0.14, 0.32, 8), mat("#e8a060"), [side * 0.32, 1.52, 0]);
+      ear.rotation.z = side * 0.15; g.add(ear);
+      const innerEar = mesh(new THREE.ConeGeometry(0.08, 0.22, 8), mat("#ffb0b0"), [side * 0.32, 1.53, 0.04]);
+      innerEar.rotation.z = side * 0.15; g.add(innerEar);
+      // 눈 + 반짝임
+      g.add(mesh(new THREE.SphereGeometry(0.04, 10, 8), mat("#1a1020"), [side * 0.15, 1.24, 0.45]));
+      g.add(mesh(new THREE.SphereGeometry(0.015, 6, 6), mat("#ffffff"), [side * 0.16, 1.255, 0.48]));
+      // 앞발
+      const paw = mesh(new THREE.SphereGeometry(0.13, 12, 8), mat("#d09050"), [side * 0.42, 0.60, 0.22]);
+      paw.scale.set(0.8, 1.2, 0.7); g.add(paw);
+      // 수염 3개
+      for (let w = -1; w <= 1; w++) {
+        const wh = mesh(new THREE.BoxGeometry(0.26, 0.013, 0.013), mat("#b07838"), [side * 0.35, 1.10 + w * 0.04, 0.44]);
+        g.add(wh);
+      }
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.04, 10, 8), mat("#cc3366"), [0, 1.15, 0.57]));
+    addChefHat(g);
 
-  for (const side of [-1, 1]) {
-    const ear = mesh(new THREE.SphereGeometry(0.16, 12, 8), mat("#d68e5d"), [side * 0.36, 1.46, 0]);
-    ear.scale.set(0.9, 1.1, 0.68);
-    player.add(ear);
+  } else if (skinId === "rabbit") {
+    // ── 토끼 셰프 ──
+    const body = mesh(new THREE.SphereGeometry(0.55, 20, 14), mat("#e8e0d4"), [0, 0.62, 0]);
+    body.scale.set(1.02, 0.96, 0.88); g.add(body);
+    const belly = mesh(new THREE.SphereGeometry(0.37, 16, 12), mat("#fbf5ee"), [0, 0.54, 0.34]);
+    belly.scale.set(1, 0.86, 0.53); g.add(belly);
+    const head = mesh(new THREE.SphereGeometry(0.45, 20, 14), mat("#efe7db"), [0, 1.20, 0.08]); g.add(head);
+    const snout = mesh(new THREE.SphereGeometry(0.17, 12, 10), mat("#fff8f1"), [0, 1.13, 0.47]);
+    snout.scale.set(1.16, 0.76, 0.74); g.add(snout);
+    for (const side of [-1, 1]) {
+      const ear = mesh(new THREE.CylinderGeometry(0.09, 0.10, 0.62, 12), mat("#efe7db"), [side * 0.31, 1.74, 0.02]);
+      ear.rotation.z = side * 0.12; g.add(ear);
+      const earTip = mesh(new THREE.SphereGeometry(0.09, 10, 8), mat("#efe7db"), [side * 0.33, 2.06, 0.02]);
+      earTip.rotation.z = side * 0.12; g.add(earTip);
+      const innerEar = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.46, 10), mat("#f4b6c6"), [side * 0.313, 1.74, 0.06]);
+      innerEar.rotation.z = side * 0.12; g.add(innerEar);
+      g.add(mesh(new THREE.SphereGeometry(0.05, 10, 8), mat("#221a1d"), [side * 0.15, 1.25, 0.46]));
+      const paw = mesh(new THREE.SphereGeometry(0.13, 12, 8), mat("#d8cec0"), [side * 0.43, 0.60, 0.24]);
+      paw.scale.set(0.8, 1.16, 0.70); g.add(paw);
+    }
+    const nose = mesh(new THREE.SphereGeometry(0.036, 10, 8), mat("#e58aa3"), [0, 1.15, 0.59]); g.add(nose);
+    const smile = mesh(new THREE.TorusGeometry(0.046, 0.010, 8, 18, Math.PI), mat("#7a6466"), [0, 1.08, 0.60]);
+    smile.rotation.x = Math.PI * 0.54; g.add(smile);
+    addChefHat(g, "#fff8e8", "#ffffff", 1.62);
 
-    const eye = mesh(new THREE.SphereGeometry(0.035, 10, 8), mat("#221a1d"), [side * 0.14, 1.24, 0.47]);
-    player.add(eye);
+  } else if (skinId === "robot") {
+    // ── 로봇 셰프 ──
+    const body = mesh(new THREE.BoxGeometry(1.1, 0.95, 0.76), mat("#6090b8"), [0, 0.65, 0]); g.add(body);
+    // 가슴 패널
+    g.add(mesh(new THREE.BoxGeometry(0.60, 0.50, 0.04), mat("#4070a0"), [0, 0.68, 0.39]));
+    for (let i = 0; i < 3; i++)
+      g.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 8),
+        new THREE.MeshStandardMaterial({ color: [0xff4040, 0x40ff80, 0x4080ff][i], emissive: [0xff4040, 0x40ff80, 0x4080ff][i], emissiveIntensity: 0.6 }),
+        [-0.15 + i * 0.15, 0.78, 0.42]));
+    // 목
+    g.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.18, 10), mat("#5080a0"), [0, 1.12, 0.02]));
+    // 머리
+    g.add(mesh(new THREE.BoxGeometry(0.82, 0.72, 0.76), mat("#6090b8"), [0, 1.60, 0.04]));
+    g.add(mesh(new THREE.BoxGeometry(0.30, 0.04, 0.04), mat("#304050"), [0, 1.44, 0.42]));
+    for (const side of [-1, 1]) {
+      g.add(mesh(new THREE.BoxGeometry(0.18, 0.12, 0.05), mat("#203040"), [side * 0.18, 1.62, 0.42]));
+      g.add(mesh(new THREE.BoxGeometry(0.12, 0.07, 0.04),
+        new THREE.MeshStandardMaterial({ color: 0x00eeff, emissive: 0x00eeff, emissiveIntensity: 1.5 }),
+        [side * 0.18, 1.62, 0.44]));
+      // 팔
+      const paw = mesh(new THREE.BoxGeometry(0.22, 0.26, 0.22), mat("#5080a0"), [side * 0.60, 0.60, 0.12]); g.add(paw);
+    }
+    // 안테나
+    g.add(mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.38, 8), mat("#80a8c8"), [0, 1.98, 0.04]));
+    g.add(mesh(new THREE.SphereGeometry(0.06, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff4400, emissiveIntensity: 1.2 }), [0, 2.19, 0.04]));
+    // 로봇 모자 (플랫 플레이트)
+    g.add(mesh(new THREE.BoxGeometry(0.90, 0.10, 0.84), mat("#405060"), [0, 2.00, 0.02]));
 
-    const paw = mesh(new THREE.SphereGeometry(0.13, 12, 8), mat("#c98154"), [side * 0.43, 0.6, 0.24]);
-    paw.scale.set(0.8, 1.2, 0.7);
-    player.add(paw);
+  } else if (skinId === "devil") {
+    // ── 악당 셰프 ──
+    const body = mesh(new THREE.SphereGeometry(0.56, 20, 14), mat("#c03030"), [0, 0.62, 0]);
+    body.scale.set(1.02, 0.96, 0.88); g.add(body);
+    // 망토
+    const cape = mesh(new THREE.SphereGeometry(0.64, 16, 12), mat("#1a1a2e"), [0, 0.72, -0.26]);
+    cape.scale.set(1.12, 1.32, 0.38); g.add(cape);
+    const belly = mesh(new THREE.SphereGeometry(0.36, 16, 12), mat("#e06060"), [0, 0.54, 0.33]);
+    belly.scale.set(1, 0.86, 0.52); g.add(belly);
+    const head = mesh(new THREE.SphereGeometry(0.44, 20, 14), mat("#cc2828"), [0, 1.20, 0.06]); g.add(head);
+    const snout = mesh(new THREE.SphereGeometry(0.17, 12, 10), mat("#e05050"), [0, 1.14, 0.46]);
+    snout.scale.set(1.2, 0.78, 0.76); g.add(snout);
+    for (const side of [-1, 1]) {
+      // 뿔 (더 크고 날카롭게, 뒤로 약간 휨)
+      const horn = mesh(new THREE.ConeGeometry(0.11, 0.56, 8), mat("#8b1c1c"), [side * 0.26, 1.68, 0.02]);
+      horn.rotation.z = side * 0.38;
+      horn.rotation.x = -0.18;
+      g.add(horn);
+      // 눈 (발광)
+      g.add(mesh(new THREE.SphereGeometry(0.04, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff5500, emissiveIntensity: 0.8 }),
+        [side * 0.15, 1.26, 0.46]));
+      const paw = mesh(new THREE.SphereGeometry(0.13, 12, 8), mat("#b02828"), [side * 0.43, 0.60, 0.22]);
+      paw.scale.set(0.8, 1.2, 0.7); g.add(paw);
+      // 등 날개 (뒤쪽 BoxGeometry)
+      const wingBase = mesh(new THREE.BoxGeometry(0.07, 0.34, 0.07), mat("#12122a"), [side * 0.34, 1.04, -0.38]);
+      g.add(wingBase);
+      const wingBlade = mesh(new THREE.BoxGeometry(0.26, 0.60, 0.04), mat("#1e1e3a"), [side * 0.52, 1.14, -0.36]);
+      wingBlade.rotation.z = side * -0.28; g.add(wingBlade);
+      const wingTip = mesh(new THREE.ConeGeometry(0.06, 0.24, 6), mat("#12122a"), [side * 0.66, 1.44, -0.36]);
+      wingTip.rotation.z = side * -0.5; g.add(wingTip);
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.045, 10, 8), mat("#7a0000"), [0, 1.16, 0.58]));
+    // 악마 왕관
+    g.add(mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.20, 18), mat("#1a1a2e"), [0, 1.60, 0.02]));
+    for (const ox of [-0.18, 0, 0.18])
+      g.add(mesh(new THREE.ConeGeometry(0.056, 0.22, 6), mat("#8b1c1c"), [ox, 1.82, 0.02]));
+
+  } else if (skinId === "wizard") {
+    // ── 마법사 셰프 ──
+    // 로브 (세로 긴 직사각형)
+    const robe = mesh(new THREE.BoxGeometry(0.96, 1.30, 0.52), mat("#3d2060"), [0, 0.50, -0.08]);
+    g.add(robe);
+    const body = mesh(new THREE.SphereGeometry(0.56, 20, 14), mat("#5c3a8a"), [0, 0.62, 0]);
+    body.scale.set(1.02, 0.96, 0.88); g.add(body);
+    const belly = mesh(new THREE.SphereGeometry(0.36, 16, 12), mat("#8060b0"), [0, 0.54, 0.33]);
+    belly.scale.set(1, 0.86, 0.52); g.add(belly);
+    // 별 장식 (몸통)
+    for (const [sx, sy, sz] of [[0.30, 0.80, 0.36], [-0.28, 0.96, 0.30], [0.10, 0.50, 0.40]]) {
+      g.add(mesh(new THREE.SphereGeometry(0.055, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 0.9 }), [sx, sy, sz]));
+    }
+    const head = mesh(new THREE.SphereGeometry(0.44, 20, 14), mat("#6644a0"), [0, 1.18, 0.08]); g.add(head);
+    const snout = mesh(new THREE.SphereGeometry(0.17, 12, 10), mat("#8060b0"), [0, 1.12, 0.46]);
+    snout.scale.set(1.2, 0.78, 0.76); g.add(snout);
+    for (const side of [-1, 1]) {
+      const ear = mesh(new THREE.SphereGeometry(0.15, 12, 8), mat("#5c3a8a"), [side * 0.36, 1.44, 0]);
+      ear.scale.set(0.9, 1.1, 0.68); g.add(ear);
+      g.add(mesh(new THREE.SphereGeometry(0.04, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xaa60ff, emissive: 0x8040ff, emissiveIntensity: 0.5 }),
+        [side * 0.14, 1.24, 0.47]));
+      const paw = mesh(new THREE.SphereGeometry(0.13, 12, 8), mat("#5c3a8a"), [side * 0.43, 0.60, 0.24]);
+      paw.scale.set(0.8, 1.2, 0.7); g.add(paw);
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.045, 10, 8), mat("#3d1060"), [0, 1.15, 0.59]));
+    // 마법사 모자 (챙 + 원뿔)
+    g.add(mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.08, 18), mat("#2a1050"), [0, 1.58, 0.02]));
+    g.add(mesh(new THREE.ConeGeometry(0.24, 0.76, 18), mat("#2a1050"), [0, 2.02, 0.02]));
+    g.add(mesh(new THREE.SphereGeometry(0.07, 6, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 1.0 }), [0, 2.42, 0.04]));
+
+  } else {
+    // ── 기본 햄스터 ──
+    const body = mesh(new THREE.SphereGeometry(0.56, 20, 14), mat("#d99b61"), [0, 0.62, 0]);
+    body.scale.set(1.02, 0.96, 0.88); g.add(body);
+    const belly = mesh(new THREE.SphereGeometry(0.38, 16, 12), mat("#ffe2ae"), [0, 0.54, 0.35]);
+    belly.scale.set(1, 0.86, 0.52); g.add(belly);
+    const head = mesh(new THREE.SphereGeometry(0.44, 20, 14), mat("#e5aa72"), [0, 1.18, 0.08]); g.add(head);
+    const snout = mesh(new THREE.SphereGeometry(0.17, 12, 10), mat("#ffe2ae"), [0, 1.12, 0.46]);
+    snout.scale.set(1.2, 0.78, 0.76); g.add(snout);
+    for (const side of [-1, 1]) {
+      const ear = mesh(new THREE.SphereGeometry(0.16, 12, 8), mat("#d68e5d"), [side * 0.36, 1.46, 0]);
+      ear.scale.set(0.9, 1.1, 0.68); g.add(ear);
+      g.add(mesh(new THREE.SphereGeometry(0.035, 10, 8), mat("#221a1d"), [side * 0.14, 1.24, 0.47]));
+      const paw = mesh(new THREE.SphereGeometry(0.13, 12, 8), mat("#c98154"), [side * 0.43, 0.6, 0.24]);
+      paw.scale.set(0.8, 1.2, 0.7); g.add(paw);
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.045, 10, 8), mat("#5b2d32"), [0, 1.15, 0.59]));
+    addChefHat(g);
   }
 
-  const nose = mesh(new THREE.SphereGeometry(0.045, 10, 8), mat("#5b2d32"), [0, 1.15, 0.59]);
-  player.add(nose);
-
-  const hatBase = mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.22, 18), mat("#fff8e8"), [0, 1.58, 0.02]);
-  player.add(hatBase);
-  for (const offset of [-0.18, 0, 0.18]) {
-    const puff = mesh(new THREE.SphereGeometry(0.17, 12, 8), mat("#ffffff"), [offset, 1.74, 0.02]);
-    player.add(puff);
-  }
-
+  // 들고 있는 아이템 메시 (공통)
   playerCarryMesh = mesh(new THREE.BoxGeometry(0.42, 0.34, 0.42), mat("#b77b45"), [0, 1.02, 0.72]);
   playerCarryMesh.visible = false;
-  player.add(playerCarryMesh);
-
-  scene.add(player);
+  g.add(playerCarryMesh);
+  return g;
 }
 
 function createHelperHamster() {
@@ -988,6 +1164,7 @@ function setupInput() {
   dom.tutorialButton.addEventListener("click", startTutorialGame);
   dom.historyButton.addEventListener("click", openHistoryModal);
   dom.multiButton.addEventListener("click", openMultiChallengeModal);
+  dom.skinButton?.addEventListener("click", openSkinSelector);
   dom.pvpSabotagePanel.querySelectorAll("[data-sabotage]").forEach((btn) => {
     btn.addEventListener("click", () => sendSabotage(btn.dataset.sabotage));
   });
@@ -2455,6 +2632,82 @@ function exitChallengeLeaderboardScreen() {
   dom.startScreen.classList.add("screen-visible");
   refreshStartActions();
   syncAuthUi();
+}
+
+function openSkinSelector() {
+  const cur = normalizeSkinId(state.selectedSkin || "default");
+  const listItems = SKINS.map(s => `
+    <button class="skin-list-card${s.id === cur ? " skin-card-selected" : ""}" data-skin="${s.id}" type="button">
+      <span class="skin-card-dot" style="background:${s.primary}"></span>
+      <span class="skin-list-name">${s.emoji} ${s.name}</span>
+      ${s.id === cur ? '<span class="skin-card-check">✓</span>' : ""}
+    </button>`).join("");
+  openModal(`
+    <h2 style="margin:0 0 12px">캐릭터 스킨</h2>
+    <div class="skin-selector-wrap">
+      <div class="skin-preview-pane">
+        <canvas id="skin-preview-canvas" style="width:200px;height:300px;display:block"></canvas>
+      </div>
+      <div class="skin-list-pane">${listItems}</div>
+    </div>
+    <p style="margin:10px 0 0;opacity:.5;font-size:12px;text-align:center">스킨을 선택하면 바로 적용됩니다.</p>
+  `);
+
+  // mini Three.js preview renderer
+  const canvas = document.getElementById("skin-preview-canvas");
+  const pvRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  pvRenderer.setClearColor(0x000000, 0);
+  const pvPxRatio = Math.min(devicePixelRatio, 2);
+  pvRenderer.setPixelRatio(pvPxRatio);
+  pvRenderer.setSize(200, 300, false); // false = CSS 건드리지 않음
+  canvas.style.width = "200px";
+  canvas.style.height = "300px";
+
+  const pvScene = new THREE.Scene();
+  const pvCamera = new THREE.PerspectiveCamera(42, 200 / 300, 0.1, 50);
+  pvCamera.position.set(0, 1.15, 4.0);
+  pvCamera.lookAt(0, 1.0, 0);
+
+  pvScene.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const pvDir = new THREE.DirectionalLight(0xffffff, 1.0);
+  pvDir.position.set(2, 4, 3);
+  pvScene.add(pvDir);
+  const pvFill = new THREE.DirectionalLight(0xaaccff, 0.3);
+  pvFill.position.set(-2, 1, -2);
+  pvScene.add(pvFill);
+
+  let pvMesh = null;
+
+  function loadPvSkin(skinId) {
+    if (pvMesh) pvScene.remove(pvMesh);
+    const savedCarry = playerCarryMesh;
+    pvMesh = buildSkinMesh(skinId);
+    playerCarryMesh = savedCarry;
+    pvMesh.position.set(0, -0.1, 0);
+    pvScene.add(pvMesh);
+  }
+
+  loadPvSkin(cur);
+
+  skinPreview = { raf: null, renderer: pvRenderer, scene: pvScene, camera: pvCamera, mesh: null };
+  function animatePv() {
+    skinPreview.raf = requestAnimationFrame(animatePv);
+    if (pvMesh) pvMesh.rotation.y += 0.014;
+    pvRenderer.render(pvScene, pvCamera);
+  }
+  animatePv();
+
+  dom.modalContent.querySelectorAll("[data-skin]").forEach(btn => {
+    btn.addEventListener("mouseenter", () => loadPvSkin(btn.dataset.skin));
+    btn.addEventListener("click", () => {
+      const id = normalizeSkinId(btn.dataset.skin);
+      state.selectedSkin = id;
+      localStorage.setItem(SKIN_SAVE_KEY, id);
+      closeModal();
+      rebuildPlayer();
+      showToast(`${SKINS.find(s => s.id === id)?.name || id} 선택!`);
+    });
+  });
 }
 
 function openHistoryModal() {
@@ -7014,6 +7267,7 @@ function spawnPvpBomb(fromNickname = "상대방") {
 }
 
 let defuseMiniGame = null; // { raf, hits, cursorPos, cursorDir, speed, zoneLeft, zoneRight, lastTime, bomb }
+let skinPreview = null;   // { raf, renderer, scene, camera, mesh }
 
 function defusePvpBomb(bomb) {
   if (defuseMiniGame) return;
@@ -7379,6 +7633,11 @@ function closeModal(play = true, force = false) {
 
   clearOrderChallengeTimer();
   clearRegionActivity();
+  if (skinPreview) {
+    cancelAnimationFrame(skinPreview.raf);
+    skinPreview.renderer.dispose();
+    skinPreview = null;
+  }
   const returnTo = state.modalReturn;
   state.modalReturn = null;
   state.modalOpen = false;
