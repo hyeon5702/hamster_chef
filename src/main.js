@@ -222,8 +222,7 @@ const PANIC_BGM_PATH = "./assets/audio/minute-de-panique.mp3";
 const PANIC_BGM_THRESHOLD = 60; // 남은 시간(초) 이하일 때 긴박한 BGM 전환
 
 // PvP 멀티 챌린지
-const PVP_SABOTAGE_COSTS = { trip: 20, ink: 20, bomb: 25 };
-const PVP_SABOTAGE_COOLDOWN_MS = 12000;
+const PVP_SABOTAGE_COOLDOWNS_MS = { trip: 22000, ink: 22000, bomb: 35000 };
 const PVP_TRIP_DURATION_MS = 5000;
 const PVP_INK_DURATION_MS = 5000;
 const PVP_BOMB_DURATION_MS = 30000;
@@ -1073,7 +1072,7 @@ function setupInput() {
         closeModal();
         return;
       }
-      if (state.running && !state.gameOver && !state.minigame?.active) {
+      if (state.running && !state.gameOver && !state.minigame?.active && !state.pvpRoom) {
         event.preventDefault();
         openPauseMenu();
       }
@@ -5699,14 +5698,14 @@ function finishChopMinigame() {
 
 // ── 물 끓이기 리듬 (bubble) ──────────────────────────────
 
-const BUBBLE_DURATION = 20;
+const BUBBLE_DURATION = 10;
 const BUBBLE_TARGET_MIN = 60;
 const BUBBLE_TARGET_MAX = 80;
 const BUBBLE_CRITICAL = 93;
 
 function openBubbleMinigame() {
   Object.assign(state.minigame, {
-    temp: 38, heatRate: 1.4, coolEffect: 0, heatBoost: 0,
+    temp: 38, heatRate: 2.8, coolEffect: 0, heatBoost: 0,
     inZoneFrames: 0, totalFrames: 0,
     timeLeft: BUBBLE_DURATION, done: false,
     frameId: null, lastFrame: performance.now(),
@@ -5767,7 +5766,7 @@ function animateBubble() {
 
   mg.coolEffect = Math.max(0, mg.coolEffect - dt);
   mg.heatBoost = Math.max(0, mg.heatBoost - dt);
-  const coolRate = 4.5;
+  const coolRate = 9.0;
   const effective = mg.coolEffect > 0 ? -coolRate : mg.heatBoost > 0 ? mg.heatRate * 3.5 : mg.heatRate;
   if (mg.coolEffect <= 0 && mg.heatBoost <= 0) {
     const st = dom.modalContent?.querySelector("#bubble-cool-status");
@@ -5775,7 +5774,7 @@ function animateBubble() {
   }
 
   mg.temp = Math.max(0, Math.min(100, mg.temp + effective * dt));
-  if (mg.temp >= BUBBLE_CRITICAL) mg.temp = Math.max(BUBBLE_TARGET_MAX, mg.temp - dt * 6);
+  if (mg.temp >= BUBBLE_CRITICAL) mg.temp = Math.max(BUBBLE_TARGET_MAX, mg.temp - dt * 12);
 
   mg.totalFrames += 1;
   const inZone = mg.temp >= BUBBLE_TARGET_MIN && mg.temp <= BUBBLE_TARGET_MAX;
@@ -5932,7 +5931,7 @@ function animatePlating() {
   const now = performance.now();
   const dt = Math.min((now - mg.lastFrame) / 1000, 0.05);
   mg.lastFrame = now;
-  mg.itemY += dt * 110;
+  mg.itemY += dt * 220;
 
   const itemEl = dom.modalContent?.querySelector("#pf-item");
   if (itemEl) itemEl.style.top = `${mg.itemY}px`;
@@ -6747,15 +6746,12 @@ function broadcastPvpScore() {
 
 function sendSabotage(type) {
   if (!pvpChannel || !state.pvpRoom) return;
-  const cost = PVP_SABOTAGE_COSTS[type] ?? 99;
-  if (state.coins < cost) { showToast("코인이 부족합니다."); return; }
   const cooldownUntil = state.pvpSabotageCooldowns[type] || 0;
   if (Date.now() < cooldownUntil) {
     showToast(`쿨다운 중 (${Math.ceil((cooldownUntil - Date.now()) / 1000)}초)`);
     return;
   }
-  state.coins -= cost;
-  state.pvpSabotageCooldowns[type] = Date.now() + PVP_SABOTAGE_COOLDOWN_MS;
+  state.pvpSabotageCooldowns[type] = Date.now() + (PVP_SABOTAGE_COOLDOWNS_MS[type] ?? 25000);
   updateHud();
   updatePvpSabotagePanel();
 
@@ -7282,16 +7278,15 @@ function updatePvpSabotagePanel() {
   if (!state.pvpRoom) return;
   dom.pvpSabotagePanel.querySelectorAll("[data-sabotage]").forEach((btn) => {
     const type = btn.dataset.sabotage;
-    const cost = PVP_SABOTAGE_COSTS[type] ?? 99;
     const cooldownUntil = state.pvpSabotageCooldowns[type] || 0;
     const onCooldown = Date.now() < cooldownUntil;
-    const affordable = state.coins >= cost;
-    btn.disabled = onCooldown || !affordable || !state.running || state.gameOver;
+    btn.disabled = onCooldown || !state.running || state.gameOver;
     const costEl = btn.querySelector(".sab-cost");
     if (costEl) {
+      const totalCd = (PVP_SABOTAGE_COOLDOWNS_MS[type] ?? 25000) / 1000;
       costEl.textContent = onCooldown
         ? `${Math.ceil((cooldownUntil - Date.now()) / 1000)}s`
-        : `${cost}💰`;
+        : `쿨: ${totalCd}s`;
     }
   });
 }
