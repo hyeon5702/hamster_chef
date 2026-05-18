@@ -6772,34 +6772,126 @@ function sendSabotage(type) {
 function playSabotageMotion(type) {
   if (!player) return;
   const t0 = performance.now();
+  const sx = player.scale.x, sy = player.scale.y, sz = player.scale.z;
+
   if (type === "bomb") {
-    // 앞으로 기울며 던지기: 짧은 백스윙 후 포워드 스윙
-    const dur = 500;
+    // 웅크리기 → 점프+백스윙 → 폭발적 투척 → 착지 바운스
+    const dur = 680;
     (function animate(now) {
       const t = Math.min((now - t0) / dur, 1);
-      player.rotation.x = t < 0.3
-        ? (t / 0.3) * 0.28         // 백스윙
-        : 0.28 - ((t - 0.3) / 0.7) * 0.52; // 포워드 스윙
+      if (t < 0.15) {
+        // 웅크리기 (anticipation)
+        const p = t / 0.15;
+        player.rotation.x = p * 0.3;
+        player.scale.set(sx * (1 + p * 0.12), sy * (1 - p * 0.22), sz * (1 + p * 0.12));
+        player.position.y = -p * 0.08;
+      } else if (t < 0.42) {
+        // 점프 + 백스윙
+        const p = (t - 0.15) / 0.27;
+        player.rotation.x = 0.3 - p * 0.95;
+        player.scale.set(sx * (1.12 - p * 0.12), sy * (0.78 + p * 0.44), sz * (1.12 - p * 0.12));
+        player.position.y = Math.sin(p * Math.PI) * 0.65;
+      } else if (t < 0.62) {
+        // 투척 (전방으로 빠르게)
+        const p = (t - 0.42) / 0.20;
+        player.rotation.x = -0.65 + p * 1.0;
+        player.rotation.z = Math.sin(p * Math.PI) * 0.18; // 약간 옆 비틀기
+        player.scale.set(sx * (1 + p * 0.06), sy * (1.22 - p * 0.3), sz * (1 + p * 0.06));
+        player.position.y = Math.max(0, 0.65 * (1 - p * 2.2));
+      } else if (t < 0.82) {
+        // 착지 충격
+        const p = (t - 0.62) / 0.20;
+        player.rotation.x = 0.35 - p * 0.35;
+        player.rotation.z = 0.18 * (1 - p);
+        player.scale.set(sx * (1.06 - p * 0.06), sy * (0.92 + p * 0.08), sz * (1.06 - p * 0.06));
+        player.position.y = 0;
+      } else {
+        // 잔여 흔들림 정착
+        const p = (t - 0.82) / 0.18;
+        player.rotation.x = Math.sin((1 - p) * Math.PI * 2.5) * 0.06 * (1 - p);
+        player.rotation.z = 0;
+        player.scale.set(sx, sy, sz);
+        player.position.y = 0;
+      }
       if (t < 1) requestAnimationFrame(animate);
-      else player.rotation.x = 0;
+      else {
+        player.rotation.x = 0; player.rotation.z = 0;
+        player.scale.set(sx, sy, sz); player.position.y = 0;
+      }
     })(t0);
+
   } else if (type === "ink") {
-    // 좌우 진동 (스프레이 동작)
-    const dur = 380;
+    // 준비 → 빠른 좌우 분무 진동 → 잔여 떨림
+    const dur = 620;
     (function animate(now) {
       const t = Math.min((now - t0) / dur, 1);
-      player.rotation.z = Math.sin(t * Math.PI * 3) * 0.38 * (1 - t);
+      if (t < 0.10) {
+        // 몸 뒤로 살짝 당기기 (준비)
+        const p = t / 0.10;
+        player.rotation.x = p * 0.2;
+        player.scale.set(sx * (1 - p * 0.1), sy * (1 + p * 0.1), sz * (1 - p * 0.1));
+      } else if (t < 0.72) {
+        // 격렬한 분무 (고주파 진동 + 스케일 펄스)
+        const p = (t - 0.10) / 0.62;
+        const decay = 1 - p * 0.4;
+        player.rotation.z = Math.sin(p * Math.PI * 8) * 0.55 * decay;
+        player.rotation.x = 0.2 + Math.sin(p * Math.PI * 4) * 0.22;
+        const pulse = 1 + Math.abs(Math.sin(p * Math.PI * 6)) * 0.12 * decay;
+        player.scale.set(sx * pulse, sy / pulse, sz * pulse);
+        player.position.y = Math.abs(Math.sin(p * Math.PI * 5)) * 0.12 * decay;
+      } else {
+        // 정착
+        const p = (t - 0.72) / 0.28;
+        player.rotation.z = Math.sin((1 - p) * Math.PI * 2) * 0.08 * (1 - p);
+        player.rotation.x = 0.2 * (1 - p);
+        player.scale.set(sx, sy, sz);
+        player.position.y = 0;
+      }
       if (t < 1) requestAnimationFrame(animate);
-      else player.rotation.z = 0;
+      else {
+        player.rotation.z = 0; player.rotation.x = 0;
+        player.scale.set(sx, sy, sz); player.position.y = 0;
+      }
     })(t0);
+
   } else if (type === "trip") {
-    // 발 구르기: 위아래 점프
-    const dur = 320;
+    // 백스윙 → 폭발적 발차기 점프 → 착지 쿵 → 바운스 정착
+    const dur = 580;
     (function animate(now) {
       const t = Math.min((now - t0) / dur, 1);
-      player.rotation.x = Math.sin(t * Math.PI) * -0.3;
+      if (t < 0.15) {
+        // 백스윙 (뒤로 기울기)
+        const p = t / 0.15;
+        player.rotation.x = p * 0.4;
+        player.scale.set(sx * (1 + p * 0.08), sy * (1 - p * 0.18), sz * (1 + p * 0.08));
+      } else if (t < 0.42) {
+        // 폭발적 발차기
+        const p = (t - 0.15) / 0.27;
+        player.rotation.x = 0.4 - p * 1.25; // 0.4 → -0.85
+        player.rotation.z = Math.sin(p * Math.PI) * 0.22; // 킥 비틀기
+        player.scale.set(sx * (1.08 - p * 0.08), sy * (0.82 + p * 0.52), sz * (1.08 - p * 0.08));
+        player.position.y = Math.sin(p * Math.PI) * 0.72;
+      } else if (t < 0.58) {
+        // 착지 쿵
+        const p = (t - 0.42) / 0.16;
+        player.rotation.x = -0.85 + p * 1.05;
+        player.rotation.z = 0.22 * (1 - p);
+        player.scale.set(sx * (1 + p * 0.12), sy * (1.34 - p * 0.5), sz * (1 + p * 0.12));
+        player.position.y = 0;
+      } else {
+        // 바운스 정착
+        const p = (t - 0.58) / 0.42;
+        player.rotation.x = 0.2 * Math.cos(p * Math.PI * 3) * (1 - p);
+        player.rotation.z = 0;
+        const bounce = 1 + Math.cos(p * Math.PI * 3) * 0.06 * (1 - p);
+        player.scale.set(sx * bounce, sy / bounce, sz * bounce);
+        player.position.y = Math.max(0, Math.sin(p * Math.PI * 2) * 0.1 * (1 - p));
+      }
       if (t < 1) requestAnimationFrame(animate);
-      else player.rotation.x = 0;
+      else {
+        player.rotation.x = 0; player.rotation.z = 0;
+        player.scale.set(sx, sy, sz); player.position.y = 0;
+      }
     })(t0);
   }
 }
@@ -6845,8 +6937,8 @@ function playInkEffect() {
   state.pvpInkActive = true;
   const overlay = dom.pvpInkOverlay;
   overlay.innerHTML = "";
-  // 랜덤 위치에 먹물 블롭 16개 생성
-  for (let i = 0; i < 16; i++) {
+  // 랜덤 위치에 먹물 블롭 28개 생성
+  for (let i = 0; i < 28; i++) {
     const blob = document.createElement("div");
     blob.className = "pvp-ink-blob";
     blob.style.left = `${5 + Math.random() * 80}%`;
