@@ -3229,29 +3229,37 @@ button {
 }
 
 /* 폭탄 HUD */
+/* 폭탄 HUD 컨테이너 */
 .pvp-bomb-hud {
   position: fixed;
   top: 68px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 9030;
+  pointer-events: none;
+}
+.pvp-bomb-row {
   background: rgba(30, 10, 10, 0.92);
   border: 2px solid #d93d3d;
   border-radius: 12px;
-  padding: 8px 20px;
+  padding: 7px 18px;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
   color: #fff;
-  z-index: 9030;
-  box-shadow: 0 0 16px rgba(217, 61, 61, 0.5);
+  white-space: nowrap;
   animation: pvpBombPulse 1s ease-in-out infinite;
 }
-.pvp-bomb-hud strong {
-  font-size: 22px;
+.pvp-bomb-row strong {
+  font-size: 20px;
   color: #ff6b6b;
-  min-width: 28px;
+  min-width: 26px;
   text-align: center;
 }
 @keyframes pvpBombPulse {

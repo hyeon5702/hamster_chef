@@ -69,7 +69,6 @@ const dom = {
   pvpStarsOverlay: document.querySelector("#pvp-stars-overlay"),
   pvpInkOverlay: document.querySelector("#pvp-ink-overlay"),
   pvpBombHud: document.querySelector("#pvp-bomb-hud"),
-  pvpBombTimer: document.querySelector("#pvp-bomb-timer"),
 };
 
 const INGREDIENTS = [
@@ -232,6 +231,19 @@ const PVP_BOMB_PENALTY_SLOW_MS = 15000;
 const PVP_SCORE_BROADCAST_INTERVAL_MS = 2500;
 const PVP_ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PVP_RESULT_WAIT_MS = 5000;
+// 스테이션 위치 (xz) — 폭탄 생성 시 충돌 방지용
+const STATION_OCCUPIED_XZS = [
+  [3.8, 0.6], [-1.8, -1.2], [-7.4, 1.8],
+  [0, 5.6], [8, 2.5], [7.4, -5.4], [4.6, -5.7], [-7.8, -5.8],
+  [-5.5, 3.25], [-2.2, 3.25], [2.2, 3.25], [5.5, 3.25], // 다이닝 테이블
+];
+const BOMB_SPAWN_CANDIDATES = [
+  [-4, -4], [0, -4], [4, -4],
+  [-5, -2], [-3, -2], [1, -2], [3, -2], [5, -2],
+  [-5, 0], [-3, 0], [0, 0], [1, -3], [-1, -3], [3, -3],
+  [-1, -5], [1, -5], [-3, -5], [3, -5],
+  [-6, 1], [6, 1], [-6, -1], [6, -1],
+];
 const AUDIO_SESSION_KEY = `session-${Date.now()}`;
 const BGM_VOLUME_SCALE = 1 / 6;
 const EFFECTS_VOLUME_SCALE = 2.25;
@@ -459,7 +471,7 @@ const state = {
   pvpDoneWaitTimer: null,
   pvpTripUntil: 0,       // timestamp: 이동 불가 종료 시점
   pvpSlowUntil: 0,       // timestamp: 이동속도 50% 감소 종료 시점
-  pvpBomb: null,         // { mesh, interactable, expiresAt } | null
+  pvpBombs: [],          // [{ id, mesh, spark, interactable, expiresAt, fromNickname }]
   pvpInkActive: false,
 };
 
@@ -6571,6 +6583,17 @@ function setupPvpChannel(roomCode) {
     applyPvpDebuff(payload.type, payload.fromNickname, payload.extra);
   });
 
+  // 폭탄 결과 알림 (방해 사용자에게)
+  pvpChannel.on("broadcast", { event: "sabotage_result" }, ({ payload }) => {
+    const myNick = getProfileDisplayName();
+    if (payload.toNickname !== myNick) return;
+    if (payload.result === "bomb_defused") {
+      showToast(`💦 ${payload.targetNickname}이(가) 폭탄을 해제했습니다!`);
+    } else if (payload.result === "bomb_exploded") {
+      showToast(`💥 ${payload.targetNickname}의 폭탄이 폭발했습니다!`);
+    }
+  });
+
   // 상대방 게임 종료
   pvpChannel.on("broadcast", { event: "game_done" }, ({ payload }) => {
     if (state.pvpOpponent) {
@@ -6738,11 +6761,47 @@ function sendSabotage(type) {
 
   const labels = { trip: "넘어뜨리기 🌀", ink: "먹물 뿌리기 🖤", bomb: "폭탄 투척 💣" };
   showToast(`${labels[type] || type} 방해 전송!`);
+  playSabotageMotion(type);
 
   pvpChannel.send({
     type: "broadcast", event: "sabotage",
     payload: { type, fromNickname: getProfileDisplayName() },
   });
+}
+
+function playSabotageMotion(type) {
+  if (!player) return;
+  const t0 = performance.now();
+  if (type === "bomb") {
+    // 앞으로 기울며 던지기: 짧은 백스윙 후 포워드 스윙
+    const dur = 500;
+    (function animate(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      player.rotation.x = t < 0.3
+        ? (t / 0.3) * 0.28         // 백스윙
+        : 0.28 - ((t - 0.3) / 0.7) * 0.52; // 포워드 스윙
+      if (t < 1) requestAnimationFrame(animate);
+      else player.rotation.x = 0;
+    })(t0);
+  } else if (type === "ink") {
+    // 좌우 진동 (스프레이 동작)
+    const dur = 380;
+    (function animate(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      player.rotation.z = Math.sin(t * Math.PI * 3) * 0.38 * (1 - t);
+      if (t < 1) requestAnimationFrame(animate);
+      else player.rotation.z = 0;
+    })(t0);
+  } else if (type === "trip") {
+    // 발 구르기: 위아래 점프
+    const dur = 320;
+    (function animate(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      player.rotation.x = Math.sin(t * Math.PI) * -0.3;
+      if (t < 1) requestAnimationFrame(animate);
+      else player.rotation.x = 0;
+    })(t0);
+  }
 }
 
 function applyPvpDebuff(type, fromNickname) {
@@ -6756,7 +6815,7 @@ function applyPvpDebuff(type, fromNickname) {
     playInkEffect();
   } else if (type === "bomb") {
     showToast(`💣 ${fromNickname}이(가) 폭탄을 던졌습니다! 30초 안에 해제하세요!`);
-    spawnPvpBomb();
+    spawnPvpBomb(fromNickname);
   }
 }
 
@@ -6786,8 +6845,8 @@ function playInkEffect() {
   state.pvpInkActive = true;
   const overlay = dom.pvpInkOverlay;
   overlay.innerHTML = "";
-  // 랜덤 위치에 먹물 블롭 8개 생성
-  for (let i = 0; i < 8; i++) {
+  // 랜덤 위치에 먹물 블롭 16개 생성
+  for (let i = 0; i < 16; i++) {
     const blob = document.createElement("div");
     blob.className = "pvp-ink-blob";
     blob.style.left = `${5 + Math.random() * 80}%`;
@@ -6810,14 +6869,23 @@ function playInkEffect() {
 }
 
 // ── 폭탄 생성/해제 ──
-function spawnPvpBomb() {
-  if (state.pvpBomb) removePvpBomb(); // 기존 폭탄 제거
-  // 랜덤 위치 (장애물 피해서)
-  const positions = [
-    [-3, 0, 2], [3, 0, 2], [0, 0, 3.5], [-4, 0, 0], [4, 0, 0],
-    [-2, 0, -1], [2, 0, -1], [0, 0, -2],
-  ];
-  const [bx, by, bz] = positions[Math.floor(Math.random() * positions.length)];
+function spawnPvpBomb(fromNickname = "상대방") {
+  // 안전한 위치 선택: 스테이션·기존 폭탄·플레이어와 충돌 방지
+  const MIN_DIST = 2.6;
+  const safe = BOMB_SPAWN_CANDIDATES.filter(([cx, cz]) => {
+    const awayFromStations = STATION_OCCUPIED_XZS.every(([sx, sz]) =>
+      Math.hypot(cx - sx, cz - sz) >= MIN_DIST
+    );
+    const awayFromBombs = state.pvpBombs.every(b =>
+      Math.hypot(cx - b.mesh.position.x, cz - b.mesh.position.z) >= 1.8
+    );
+    const awayFromPlayer = !player ||
+      Math.hypot(cx - player.position.x, cz - player.position.z) >= 2.0;
+    return awayFromStations && awayFromBombs && awayFromPlayer;
+  });
+  const candidates = safe.length > 0 ? safe : BOMB_SPAWN_CANDIDATES;
+  const [bx, bz] = candidates[Math.floor(Math.random() * candidates.length)];
+  const by = 0;
 
   const group = new THREE.Group();
   // 몸통
@@ -6842,35 +6910,39 @@ function spawnPvpBomb() {
   group.position.set(bx, by + 0.28, bz);
   scene.add(group);
 
+  const bombId = Date.now() + Math.random();
+  const bomb = { id: bombId, mesh: group, spark, interactable: null, expiresAt: Date.now() + PVP_BOMB_DURATION_MS, fromNickname };
   const interactable = {
     label: "💣 폭탄 해제",
     position: group.position,
     radius: 2.2,
-    action: defusePvpBomb,
+    action: () => defusePvpBomb(bomb),
   };
+  bomb.interactable = interactable;
   interactables.push(interactable);
 
-  state.pvpBomb = { mesh: group, spark, interactable, expiresAt: Date.now() + PVP_BOMB_DURATION_MS };
-  dom.pvpBombHud.classList.remove("hidden");
+  state.pvpBombs.push(bomb);
+  updatePvpBombHud();
 }
 
-let defuseMiniGame = null; // { raf, hits, cursorPos, cursorDir, speed, zoneLeft, zoneRight, lastTime }
+let defuseMiniGame = null; // { raf, hits, cursorPos, cursorDir, speed, zoneLeft, zoneRight, lastTime, bomb }
 
-function defusePvpBomb() {
+function defusePvpBomb(bomb) {
   if (defuseMiniGame) return;
-  openDefuseMinigame();
+  openDefuseMinigame(bomb);
 }
 
-function openDefuseMinigame() {
-  const zoneCenter = 0.35 + Math.random() * 0.30;
-  const zoneHalf = 0.09;
+function openDefuseMinigame(bomb) {
+  const zoneCenter = 0.30 + Math.random() * 0.40;
+  const zoneHalf = 0.045; // 기존의 절반
   defuseMiniGame = {
     hits: 0, cursorPos: 0, cursorDir: 1,
-    speed: 0.35,
+    speed: 0.70, // 기존의 2배
     zoneLeft: zoneCenter - zoneHalf,
     zoneRight: zoneCenter + zoneHalf,
     lastTime: performance.now(),
     raf: null,
+    bomb,
   };
 
   const el = document.getElementById("defuse-minigame");
@@ -6896,11 +6968,11 @@ function openDefuseMinigame() {
 
 function attemptDefuseHit() {
   if (!defuseMiniGame) return;
-  const { cursorPos, zoneLeft, zoneRight } = defuseMiniGame;
+  const { cursorPos, zoneLeft, zoneRight, bomb } = defuseMiniGame;
 
   if (cursorPos >= zoneLeft && cursorPos <= zoneRight) {
     defuseMiniGame.hits++;
-    defuseMiniGame.speed += 0.15;
+    defuseMiniGame.speed += 0.20;
 
     const zone = document.getElementById("defuse-zone");
     zone?.classList.add("defuse-zone-hit");
@@ -6910,14 +6982,21 @@ function attemptDefuseHit() {
     hitEls[defuseMiniGame.hits - 1]?.classList.add("active");
 
     if (defuseMiniGame.hits >= 3) {
+      const fromNick = bomb?.fromNickname;
       closeDefuseMinigame();
       showToast("💣 폭탄 해제 성공!");
-      removePvpBomb();
+      broadcastSabotageResult("bomb_defused", fromNick);
+      removePvpBomb(bomb);
     }
   } else {
-    const cursor = document.getElementById("defuse-cursor");
-    cursor?.classList.add("defuse-cursor-miss");
-    setTimeout(() => cursor?.classList.remove("defuse-cursor-miss"), 250);
+    // 틀리면 즉시 폭발
+    const fromNick = bomb?.fromNickname;
+    closeDefuseMinigame();
+    const remaining = Math.max(state.pvpSlowUntil - Date.now(), 0);
+    state.pvpSlowUntil = Date.now() + remaining + PVP_BOMB_PENALTY_SLOW_MS;
+    showToast("💥 실수로 터뜨렸습니다! 15초간 이동속도 50% 감소");
+    broadcastSabotageResult("bomb_exploded", fromNick);
+    removePvpBomb(bomb);
   }
 }
 
@@ -6928,13 +7007,58 @@ function closeDefuseMinigame() {
   document.getElementById("defuse-minigame")?.classList.add("hidden");
 }
 
-function removePvpBomb() {
-  if (!state.pvpBomb) return;
-  scene.remove(state.pvpBomb.mesh);
-  const idx = interactables.indexOf(state.pvpBomb.interactable);
-  if (idx >= 0) interactables.splice(idx, 1);
-  state.pvpBomb = null;
-  dom.pvpBombHud.classList.add("hidden");
+function broadcastSabotageResult(result, toNickname) {
+  if (!pvpChannel || !toNickname) return;
+  pvpChannel.send({
+    type: "broadcast", event: "sabotage_result",
+    payload: { result, targetNickname: getProfileDisplayName(), toNickname },
+  });
+}
+
+function removePvpBomb(bomb) {
+  if (bomb) {
+    scene.remove(bomb.mesh);
+    const idx = interactables.indexOf(bomb.interactable);
+    if (idx >= 0) interactables.splice(idx, 1);
+    state.pvpBombs = state.pvpBombs.filter(b => b !== bomb);
+  } else {
+    // 전체 제거
+    for (const b of state.pvpBombs) {
+      scene.remove(b.mesh);
+      const idx = interactables.indexOf(b.interactable);
+      if (idx >= 0) interactables.splice(idx, 1);
+    }
+    state.pvpBombs = [];
+  }
+  updatePvpBombHud();
+}
+
+function updatePvpBombHud() {
+  const hud = dom.pvpBombHud;
+  if (!hud) return;
+  if (state.pvpBombs.length === 0) {
+    hud.classList.add("hidden");
+    hud.innerHTML = "";
+    return;
+  }
+  // 각 폭탄마다 행 동기화
+  const existingRows = new Map([...hud.querySelectorAll(".pvp-bomb-row")].map(el => [el.dataset.id, el]));
+  const newIds = new Set(state.pvpBombs.map(b => String(b.id)));
+  // 없어진 것 제거
+  for (const [id, el] of existingRows) {
+    if (!newIds.has(id)) el.remove();
+  }
+  // 새 것 추가
+  for (const b of state.pvpBombs) {
+    if (!existingRows.has(String(b.id))) {
+      const row = document.createElement("div");
+      row.className = "pvp-bomb-row";
+      row.dataset.id = String(b.id);
+      row.innerHTML = `💣 해제까지 <strong>30</strong>초`;
+      hud.appendChild(row);
+    }
+  }
+  hud.classList.remove("hidden");
 }
 
 function clearPvpDebuffs() {
@@ -6946,7 +7070,6 @@ function clearPvpDebuffs() {
   removePvpBomb();
   dom.pvpStarsOverlay?.classList.add("hidden");
   dom.pvpInkOverlay?.classList.add("hidden");
-  dom.pvpBombHud?.classList.add("hidden");
 }
 
 function endPvpGame() {
@@ -7037,17 +7160,20 @@ function updatePvpFrame(dt) {
   }
   // 쿨다운 만료 체크 → 버튼 상태 갱신
   updatePvpSabotagePanel();
-  // 폭탄 타이머 체크
-  if (state.pvpBomb) {
-    const remaining = Math.ceil((state.pvpBomb.expiresAt - Date.now()) / 1000);
-    if (dom.pvpBombTimer) dom.pvpBombTimer.textContent = Math.max(0, remaining);
-    if (Date.now() >= state.pvpBomb.expiresAt) {
-      // 시간 초과 → 패널티: 15초간 이동속도 50% 감소
-      closeDefuseMinigame();
-      state.pvpSlowUntil = Date.now() + PVP_BOMB_PENALTY_SLOW_MS;
+  // 폭탄 타이머 체크 (배열 순회, 패널티 누적)
+  const now = Date.now();
+  for (const bomb of [...state.pvpBombs]) {
+    const remaining = Math.ceil((bomb.expiresAt - now) / 1000);
+    const row = dom.pvpBombHud?.querySelector(`.pvp-bomb-row[data-id="${bomb.id}"]`);
+    if (row) row.querySelector("strong").textContent = Math.max(0, remaining);
+    if (now >= bomb.expiresAt) {
+      if (defuseMiniGame?.bomb === bomb) closeDefuseMinigame();
+      const slowRemaining = Math.max(state.pvpSlowUntil - now, 0);
+      state.pvpSlowUntil = now + slowRemaining + PVP_BOMB_PENALTY_SLOW_MS;
       updateHud();
       showToast("💥 폭탄 폭발! 15초간 이동속도 50% 감소");
-      removePvpBomb();
+      broadcastSabotageResult("bomb_exploded", bomb.fromNickname);
+      removePvpBomb(bomb);
     }
   }
   updatePvpDebuffNotice();
