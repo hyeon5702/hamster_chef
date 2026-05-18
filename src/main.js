@@ -3180,7 +3180,7 @@ function getTutorialQuestCopy() {
     return "오른쪽의 <strong>재료 선반</strong>으로 가서 <strong>E</strong>를 누르세요. 컨베이어 벨트에 올라오는 재료를 보고, 정상이면 <strong>통과(F)</strong>, 상한 재료(💨 표시)면 <strong>불량(G)</strong>을 눌러 선별하세요. 틀리면 목숨이 줄어드니 집중하세요!";
   }
   if (quest.id === "mop") {
-    return "홀 바닥에 퍼진 <strong>얼룩 5개</strong>를 찾아보세요. 얼룩 가까이 다가가면 상호작용 버튼이 뜹니다. <strong>E</strong>를 눌러 얼룩을 닦아내세요.";
+    return "홀 바닥에 퍼진 <strong>얼룩 10개</strong>를 찾아보세요. 얼룩 가까이 다가가면 상호작용 버튼이 뜹니다. <strong>E</strong>를 눌러 얼룩을 닦아내세요.";
   }
   if (quest.id === "water") {
     return "오른쪽 앞쪽의 <strong>화분</strong>으로 가서 <strong>E</strong>를 누르세요. 화분을 선택한 뒤 <strong>물 따르기 💧</strong> 버튼을 눌러 물을 주세요. 물이 <strong>넘치거나 완전히 마르지</strong> 않도록 4개 화분을 모두 관리하면 됩니다.";
@@ -4153,8 +4153,8 @@ function startQuest(id, options = {}) {
   if (id === "mop") {
     state.currentQuest = {
       id, name: quest.name, pay: quest.pay,
-      progress: 0, total: 5,
-      detail: "바닥 얼룩을 밟아 닦아내세요. (5개)",
+      progress: 0, total: 10,
+      detail: "바닥 얼룩을 밟아 닦아내세요. (10개)",
     };
     spawnStains();
   }
@@ -4532,7 +4532,7 @@ function renderOrderMemory() {
     </article>
     <article class="choice-card order-briefing">
       <h3>외울 것</h3>
-      <p>테이블 번호, 요리 이름, 요청 문구 3가지를 모두 맞춰야 합니다. 틀린 주문표를 두 번 고르거나 시간이 끝나면 보상이 사라집니다.</p>
+      <p>테이블 번호, 요리 이름, 요청 문구 3가지를 모두 맞춰야 합니다. 틀린 주문표를 한 번만 골라도 즉시 실패하며 시간이 끝나도 보상이 사라집니다.</p>
       <button type="button" data-start-order-challenge="true">주문표 접기</button>
     </article>
   `);
@@ -4661,7 +4661,7 @@ function chooseOrderTicket(option, button) {
     const mistakeLabel = dom.modalContent.querySelector(".order-challenge-bar span");
     if (mistakeLabel) mistakeLabel.textContent = `실수 ${quest.orderMistakes}/${ORDER_MAX_MISTAKES}`;
     if (quest.orderMistakes >= ORDER_MAX_MISTAKES) {
-      failOrderDelivery("주문표를 두 번 잘못 골랐습니다.");
+      failOrderDelivery("주문표를 한 번 잘못 골라 실패했습니다.");
       return;
     }
     showToast("비슷하지만 다른 주문표입니다. 남은 후보를 다시 보세요.");
