@@ -3187,12 +3187,12 @@ button {
   inset: 0;
   pointer-events: none;
   z-index: 9010;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 80px;
 }
 .pvp-stars-overlay {
+  position: fixed;
+  left: 50%;
+  top: 80px;
+  transform: translate(-50%, -50%);
   font-size: 36px;
   letter-spacing: 12px;
   animation: pvpStarsSpin 0.9s linear infinite;

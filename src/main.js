@@ -79,7 +79,7 @@ const INGREDIENTS = [
     price: 18,
     color: "#f2c94c",
     art: "cheese",
-    traits: { savory: 25, creamy: 8 },
+    traits: { savory: 22, creamy: 8 },
   },
   {
     id: "cream",
@@ -87,7 +87,7 @@ const INGREDIENTS = [
     price: 18,
     color: "#fff4c7",
     art: "cream",
-    traits: { creamy: 32 },
+    traits: { creamy: 28 },
   },
   {
     id: "herb",
@@ -95,7 +95,7 @@ const INGREDIENTS = [
     price: 14,
     color: "#2da66f",
     art: "herb",
-    traits: { fresh: 26 },
+    traits: { fresh: 24 },
   },
   {
     id: "carrot",
@@ -137,7 +137,7 @@ const INGREDIENTS = [
     color: "#c85f37",
     art: "pepper",
     unlockDay: 2,
-    traits: { savory: 10, spicy: 14 },
+    traits: { savory: 8, spicy: 18 },
   },
   {
     id: "market-cheese",
@@ -155,7 +155,7 @@ const INGREDIENTS = [
     color: "#3cb673",
     art: "herb",
     unlockDay: 4,
-    traits: { fresh: 30, savory: 8 },
+    traits: { fresh: 32, savory: 8 },
   },
   {
     id: "dew-berry",
@@ -164,7 +164,7 @@ const INGREDIENTS = [
     color: "#8a68db",
     art: "berry",
     unlockDay: 4,
-    traits: { sweet: 16, fresh: 20 },
+    traits: { sweet: 18, fresh: 20 },
   },
   {
     id: "greenhouse-carrot",
@@ -182,7 +182,7 @@ const INGREDIENTS = [
     color: "#da5446",
     art: "berry",
     unlockDay: 6,
-    traits: { fresh: 22, sweet: 8 },
+    traits: { fresh: 20, sweet: 12 },
   },
 ];
 
@@ -200,6 +200,8 @@ const GAME_SECONDS = 480;
 const DAY_ORDER_COUNT = 3;
 const ORDER_SCORE_STEPS = [75, 80, 85, 90];
 const ORDER_COMPLETION_REWARD = 18;
+const ABANDON_ORDER_SCORE_PENALTY = 12;
+const ABANDON_QUEST_SCORE_PENALTY = 7;
 const LEGACY_SAVE_KEY = "hamster-chef-save-v1";
 const SKIN_SAVE_KEY = "hamster-chef-skin-v1";
 const SKINS = [
@@ -222,8 +224,16 @@ const REPUTATION_UNLOCKS = {
   longService: 150,
 };
 const ORDER_CHALLENGE_SECONDS = 14;
-const ORDER_MAX_MISTAKES = 2;
-const ORDER_DISHES = ["별빛 크림 스튜", "숲속 버섯 플레이트", "당근 크림볼"];
+const ORDER_MAX_MISTAKES = 1;
+const ORDER_DISHES = [
+  "별빛 크림 스튜",
+  "숲속 버섯 플레이트",
+  "당근 크림볼",
+  "황금 치즈 퐁듀",
+  "화산 토마토 라구",
+  "이슬 베리 글레이즈 샐러드",
+  "온실 당근 수프",
+];
 const ORDER_REQUESTS = ["매운맛 제외", "신선한 향 강조", "부드럽게 조리", "고소함 많이", "소스 따로", "치즈 추가"];
 const DEFAULT_MUSIC_VOLUME = 0.2;
 const DEFAULT_EFFECTS_VOLUME = 0.85;
@@ -261,6 +271,10 @@ const ORDER_DISH_ART = {
   "별빛 크림 스튜": ["cream", "cheese", "herb"],
   "숲속 버섯 플레이트": ["mushroom", "herb", "cheese"],
   "당근 크림볼": ["carrot", "cream", "berry"],
+  "황금 치즈 퐁듀": ["market-cheese", "cream", "berry"],
+  "화산 토마토 라구": ["pepper", "mini-tomato", "market-spice"],
+  "이슬 베리 글레이즈 샐러드": ["dew-berry", "forest-herb", "herb"],
+  "온실 당근 수프": ["greenhouse-carrot", "cream", "mini-tomato"],
 };
 
 const CUSTOMER_PREFERENCES = [
@@ -334,7 +348,7 @@ const RECIPES = [
     unlockDay: 2,
     hint: "버섯의 감칠맛을 살리고 고소함과 신선함으로 숲길 같은 여운을 만듭니다.",
     warning: "달콤함은 살짝 있으면 좋지만 주인공이 되면 안 됩니다.",
-    needs: { umami: 24, savory: 32, fresh: 24 },
+    needs: { umami: 28, savory: 28, fresh: 24 },
     penalty: { trait: "spicy", limit: 28, points: 6 },
     bonus: { trait: "sweet", threshold: 10, points: 5 },
   },
@@ -344,7 +358,7 @@ const RECIPES = [
     unlockDay: 4,
     hint: "당근의 달콤함과 크림의 부드러움을 둥글게 묶고, 신선한 향으로 마무리합니다.",
     warning: "매운맛은 이 요리와 거의 어울리지 않습니다.",
-    needs: { sweet: 20, creamy: 32, fresh: 30 },
+    needs: { sweet: 20, creamy: 28, fresh: 28 },
     penalty: { trait: "spicy", limit: 8, points: 20 },
     bonus: null,
   },
@@ -355,9 +369,39 @@ const RECIPES = [
     warning: "신선함이 너무 낮으면 무거운 맛으로 평가됩니다.",
     unlockReputation: REPUTATION_UNLOCKS.goldenFondue,
     unlockDay: 7,
-    needs: { savory: 42, creamy: 38, sweet: 18 },
+    needs: { savory: 42, creamy: 34, sweet: 22 },
     penalty: { trait: "spicy", limit: 16, points: 12 },
     bonus: { trait: "fresh", threshold: 18, points: 4 },
+  },
+  {
+    id: "volcano-ragu",
+    name: "화산 토마토 라구",
+    unlockDay: 6,
+    hint: "토마토의 산뜻함 위에 향신 풍미와 강한 매운맛을 분명하게 올리는 뜨거운 메뉴입니다.",
+    warning: "크림이 많아지면 날카로운 화산 같은 인상이 무뎌집니다.",
+    needs: { spicy: 26, fresh: 22, savory: 16 },
+    penalty: { trait: "creamy", limit: 20, points: 8 },
+    bonus: { trait: "umami", threshold: 12, points: 5 },
+  },
+  {
+    id: "dew-glaze-salad",
+    name: "이슬 베리 글레이즈 샐러드",
+    unlockDay: 4,
+    hint: "차가운 이슬처럼 신선한 향과 베리의 달콤함을 얇게 입혀 상큼하게 마무리합니다.",
+    warning: "매운 기운이 올라오면 샐러드의 맑은 인상이 빠르게 깨집니다.",
+    needs: { fresh: 34, sweet: 20, savory: 8 },
+    penalty: { trait: "spicy", limit: 10, points: 12 },
+    bonus: { trait: "creamy", threshold: 10, points: 4 },
+  },
+  {
+    id: "greenhouse-soup",
+    name: "온실 당근 수프",
+    unlockDay: 6,
+    hint: "온실 채소의 단맛과 부드러운 질감을 살리되, 마지막 향은 가볍고 산뜻해야 합니다.",
+    warning: "매운 기운이 들어오면 수프의 포근한 균형이 쉽게 무너집니다.",
+    needs: { sweet: 24, fresh: 26, creamy: 22 },
+    penalty: { trait: "spicy", limit: 8, points: 10 },
+    bonus: { trait: "savory", threshold: 10, points: 4 },
   },
 ];
 
@@ -367,7 +411,7 @@ const QUESTS = [
   { id: "stock", name: "재료 상자 정리", pay: 30, summary: "식당 바닥의 상자 3개를 선반으로 옮깁니다." },
   // ── 신규 ────────────────────────────────────────────────
   { id: "sort", name: "재료 선별", pay: 28, summary: "선반에서 상한 재료 2개를 찾아 골라냅니다." },
-  { id: "mop", name: "홀 청소", pay: 22, summary: "식당 바닥의 얼룩 5개를 밟아 닦아냅니다." },
+  { id: "mop", name: "홀 청소", pay: 22, summary: "식당 바닥의 얼룩 10개를 밟아 닦아냅니다." },
   { id: "water", name: "화분 물 주기", pay: 26, summary: "상점 앞 화분 4개에 물을 80~95% 구간에 맞춥니다." },
 ];
 
@@ -1786,7 +1830,138 @@ function getProfileDisplayName() {
 
 function getChallengeRunScore() {
   const dishes = state.serviceStats?.dishes || [];
-  return dishes.reduce((total, dish) => total + (dish.score || 0), 0);
+  const gross = dishes.reduce((total, dish) => total + (dish.score || 0), 0);
+  return Math.max(0, gross - (state.serviceStats?.penaltyScore || 0));
+}
+
+function applyChallengePenalty(points) {
+  if (!state.serviceStats || points <= 0) return 0;
+  state.serviceStats.penaltyScore = (state.serviceStats.penaltyScore || 0) + points;
+  return points;
+}
+
+function makeReplacementOrder(previousRecipeId = getCurrentOrder()?.recipe?.id || null) {
+  if (state.gameMode === "career") {
+    let recipe = pickTargetRecipe();
+    const recipes = getUnlockedRecipes();
+    if (recipe.id === previousRecipeId && recipes.length > 1) {
+      recipe = recipes[(recipes.findIndex((item) => item.id === recipe.id) + 1) % recipes.length] || recipe;
+    }
+    return {
+      recipe,
+      requiredScore: THREE.MathUtils.clamp(
+        applyDailyRequiredScore(recipe, 72 + Math.min(18, state.day) - getUpgradeLevel("hospitality") * 3),
+        60,
+        96,
+      ),
+      customer: pickCustomerPreference(),
+    };
+  }
+  return makeChallengeOrder(previousRecipeId);
+}
+
+function replaceCurrentOrder(previousRecipeId = getCurrentOrder()?.recipe?.id || null) {
+  const replacement = makeReplacementOrder(previousRecipeId);
+  state.orderQueue[Math.min(state.orderIndex, state.orderQueue.length - 1)] = replacement;
+  state.targetRecipe = replacement.recipe;
+  return replacement;
+}
+
+function abandonCurrentOrder() {
+  const currentOrder = getCurrentOrder();
+  if (!currentOrder) return;
+  const penalty = applyChallengePenalty(ABANDON_ORDER_SCORE_PENALTY);
+  state.selectedIngredients = [];
+  state.pendingDish = null;
+  state.lastJudgement = null;
+  state.scoreboardConclusion = null;
+  replaceCurrentOrder(currentOrder.recipe?.id || null);
+  updateHud();
+  saveProgress();
+  closeModal(false, true);
+  openModal(`
+    <h2>요리를 포기했습니다</h2>
+    <p>현재 주문을 포기하고 다른 요리를 받았습니다.</p>
+    <article class="choice-card">
+      <h3>챌린지 점수 -${penalty}</h3>
+      <p>새 주문은 <strong>${getTargetRecipe().name}</strong>입니다. 목표는 <strong>${getRequiredScore()}점 이상</strong>입니다.</p>
+      <button type="button" data-close-abandon-order="true">확인</button>
+    </article>
+  `);
+  dom.modalContent.querySelector('[data-close-abandon-order]')?.addEventListener('click', () => closeModal());
+}
+
+function abandonCurrentQuest() {
+  const quest = state.currentQuest;
+  if (!quest) return;
+  const penalty = applyChallengePenalty(ABANDON_QUEST_SCORE_PENALTY);
+  if (quest.frameId) {
+    cancelAnimationFrame(quest.frameId);
+    quest.frameId = null;
+  }
+  clearOrderChallengeTimer();
+  clearCrates();
+  clearStains();
+  playerCarryMesh.visible = false;
+  const previousQuestId = quest.id;
+  state.currentQuest = null;
+  state.lastChallengeQuestId = previousQuestId;
+  if (state.gameMode === "challenge") {
+    assignRandomChallengeQuest({ excludeId: previousQuestId, toast: false });
+    updateHud();
+    saveProgress();
+    closeModal(false, true);
+    openModal(`
+      <h2>일을 포기했습니다</h2>
+      <p>현재 일을 포기하고 다른 랜덤 일을 받았습니다.</p>
+      <article class="choice-card">
+        <h3>챌린지 점수 -${penalty}</h3>
+        <p>새 일은 <strong>${state.currentQuest?.name || "없음"}</strong>입니다.</p>
+        <p>${state.currentQuest?.detail || "게시판에서 확인해보세요."}</p>
+        <button type="button" data-close-abandon-quest="true">확인</button>
+      </article>
+    `);
+    dom.modalContent.querySelector('[data-close-abandon-quest]')?.addEventListener('click', () => closeModal());
+    return;
+  }
+  updateHud();
+  saveProgress();
+  closeModal(false, true);
+  openQuestBoard();
+}
+
+function openAbandonOrderConfirm() {
+  openModal(`
+    <h2>요리를 포기할까요?</h2>
+    <p>현재 주문을 포기하고 다른 요리를 받습니다.</p>
+    <article class="choice-card">
+      <h3>챌린지 점수 -${ABANDON_ORDER_SCORE_PENALTY}</h3>
+      <p>포기하면 현재 주문이 교체됩니다. 정말 진행할까요?</p>
+      <div class="mode-actions">
+        <button type="button" class="primary-action" data-confirm-abandon-order="true">포기하기</button>
+        <button type="button" class="primary-action secondary-action" data-cancel-abandon-order="true">계속 요리하기</button>
+      </div>
+    </article>
+  `);
+  dom.modalContent.querySelector('[data-confirm-abandon-order]')?.addEventListener('click', abandonCurrentOrder);
+  dom.modalContent.querySelector('[data-cancel-abandon-order]')?.addEventListener('click', openCooking);
+}
+
+function openAbandonQuestConfirm() {
+  openModal(`
+    <h2>일을 포기할까요?</h2>
+    <p>현재 일을 포기하고 다른 일을 받습니다.</p>
+    <article class="choice-card">
+      <h3>챌린지 점수 -${ABANDON_QUEST_SCORE_PENALTY}</h3>
+      <p>진행 중인 일은 사라집니다. 정말 포기할까요?</p>
+      <div class="mode-actions">
+        <button type="button" class="primary-action" data-confirm-abandon-quest="true">포기하기</button>
+        <button type="button" class="primary-action secondary-action" data-cancel-abandon-quest="true">계속하기</button>
+      </div>
+    </article>
+  `);
+  dom.modalContent.querySelector('[data-confirm-abandon-quest]')?.addEventListener('click', abandonCurrentQuest);
+  dom.modalContent.querySelector('[data-cancel-abandon-quest]')?.addEventListener('click', openQuestBoard);
 }
 
 function getChallengeOrderNumber() {
@@ -2722,7 +2897,7 @@ function openHistoryModal() {
             <div class="scoreboard-row history-row">
               <strong>${run.day}회차</strong>
               <span>${run.event}</span>
-              <b>${run.completed}개 · ${run.dishes?.reduce((total, dish) => total + (dish.score || 0), 0) || 0}점</b>
+              <b>${run.completed}개 · ${Math.max(0, (run.dishes?.reduce((total, dish) => total + (dish.score || 0), 0) || 0) - (run.penaltyScore || 0))}점</b>
               <em>최고 ${run.bestScore}점</em>
             </div>
           `,
@@ -3290,6 +3465,7 @@ function startCareerGame() {
     coinsEarned: 0,
     reputationEarned: 0,
     dishes: [],
+    penaltyScore: 0,
   };
   state.currentQuest = null;
   state.pendingDish = null;
@@ -3385,6 +3561,7 @@ function setupTutorialOrder() {
     coinsEarned: 0,
     reputationEarned: 0,
     dishes: [],
+    penaltyScore: 0,
   };
 }
 
@@ -3476,6 +3653,7 @@ function restoreActiveDay() {
     coinsEarned: 0,
     reputationEarned: 0,
     dishes: [],
+    penaltyScore: 0,
   };
   state.savedActiveDay = null;
   return true;
@@ -3502,6 +3680,7 @@ function restoreCareerProgress() {
     coinsEarned: 0,
     reputationEarned: 0,
     dishes: [],
+    penaltyScore: 0,
   };
   state.savedActiveDay = null;
   return Boolean(state.orderQueue.length);
@@ -3563,6 +3742,7 @@ function animate() {
   }
 
   updateCamera(dt);
+  updatePvpStarsOverlayPosition();
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
@@ -3837,11 +4017,15 @@ function openQuestBoard() {
           <h3>${state.currentQuest.name}</h3>
           <p>${state.currentQuest.detail}</p>
           <p><strong>보상 ${state.currentQuest.pay}코인</strong></p>
-          <button type="button" data-open-history="true">기록 보기</button>
+          <div class="mode-actions">
+            <button type="button" data-open-history="true">기록 보기</button>
+            <button type="button" class="secondary-action" data-abandon-quest="true">일 포기</button>
+          </div>
         </article>
       `);
       const historyButton = dom.modalContent.querySelector("[data-open-history]");
       if (historyButton) historyButton.addEventListener("click", openHistoryModal);
+      dom.modalContent.querySelector("[data-abandon-quest]")?.addEventListener("click", openAbandonQuestConfirm);
       return;
     }
 
@@ -3871,6 +4055,14 @@ function openQuestBoard() {
       <p>최근 챌린지의 완료 주문 수와 점수 흐름을 확인합니다.</p>
       <button type="button" data-open-history="true">기록 보기</button>
     </article>
+    ${busy ? `
+      <article class="choice-card">
+        <h3>${state.currentQuest.name}</h3>
+        <p>${state.currentQuest.detail}</p>
+        <p><strong>챌린지 점수 -${ABANDON_QUEST_SCORE_PENALTY}</strong></p>
+        <button type="button" class="secondary-action" data-abandon-quest="true">일 포기</button>
+      </article>
+    ` : ""}
     <div class="grid-list">
       ${QUESTS.map(
         (quest) => `
@@ -3895,6 +4087,7 @@ function openQuestBoard() {
   });
   const historyButton = dom.modalContent.querySelector("[data-open-history]");
   if (historyButton) historyButton.addEventListener("click", openHistoryModal);
+  dom.modalContent.querySelector("[data-abandon-quest]")?.addEventListener("click", openAbandonQuestConfirm);
 }
 
 function startQuest(id, options = {}) {
@@ -3971,7 +4164,7 @@ function startQuest(id, options = {}) {
       id, name: quest.name, pay: quest.pay,
       plants: Array.from({ length: 4 }, (_, i) => ({
         level: 15 + Math.floor(Math.random() * 30),
-        dryRate: [0.04, 0.06, 0.05, 0.07][i],
+        dryRate: [0.018, 0.024, 0.02, 0.026][i],
         overflowed: false,
       })),
       selectedPlant: 0,
@@ -4541,11 +4734,22 @@ function handleShelf() {
 
 function spawnCrates() {
   clearCrates();
-  const cratePositions = [
+  const crateCandidates = [
+    [-6.4, 0, 5.7],
     [-4.3, 0, 5.8],
+    [-1.4, 0, 5.1],
+    [1.8, 0, 5.0],
     [4.9, 0, 4.2],
+    [6.4, 0, 3.1],
     [-6.2, 0, -0.9],
+    [-3.6, 0, -0.4],
+    [0.4, 0, -1.0],
+    [3.8, 0, -0.6],
   ];
+  const cratePositions = crateCandidates
+    .slice()
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
 
   worldObjects.crates = cratePositions.map((position, index) => {
     const group = new THREE.Group();
@@ -4616,7 +4820,7 @@ function spawnStains() {
     }
   }
   candidates.sort(() => Math.random() - 0.5);
-  const chosen = candidates.slice(0, 5);
+  const chosen = candidates.slice(0, 10);
 
   worldObjects.stains = chosen.map(([x, z]) => {
     const m = mesh(new THREE.CircleGeometry(0.52, 14), mat("#a06820"), [x, 0.015, z]);
@@ -4843,7 +5047,7 @@ function openWaterQuest() {
   dom.modalContent.querySelector("#water-reset")?.addEventListener("click", () => {
     quest.plants = Array.from({ length: 4 }, (_, i) => ({
       level: 15 + Math.floor(Math.random() * 30),
-      dryRate: [0.04, 0.06, 0.05, 0.07][i],
+      dryRate: [0.018, 0.024, 0.02, 0.026][i],
       overflowed: false,
     }));
     quest.selectedPlant = 0;
@@ -5158,6 +5362,7 @@ function resetServiceDay() {
     coinsEarned: 0,
     reputationEarned: 0,
     dishes: [],
+    penaltyScore: 0,
   };
   state.currentQuest = null;
   state.lastChallengeQuestId = null;
@@ -5539,7 +5744,10 @@ function openCooking() {
         <p>${state.gameMode === "career" ? `현재 손님은 ${getTargetRecipe().name}, 목표 ${getRequiredScore()}점 이상입니다.` : `현재 주문은 ${getOrderLabel()} ${getTargetRecipe().name}, 목표 ${getRequiredScore()}점 이상입니다.`}</p>
         <p>손님 취향: ${getCustomerPreference().name} · ${getCustomerPreference().description}</p>
         <p>오늘 이벤트: ${state.dailyEvent.name}</p>
-        <button class="buy-button" type="button" data-open-recipes="true">노트 열기</button>
+        <div class="mode-actions">
+          <button class="buy-button" type="button" data-open-recipes="true">노트 열기</button>
+          <button class="buy-button secondary-action" type="button" data-abandon-order="true">요리 포기</button>
+        </div>
       </article>
     </div>
   `);
@@ -5569,6 +5777,7 @@ function openCooking() {
   if (recipesButton) {
     recipesButton.addEventListener("click", () => openRecipeNote({ returnTo: "cooking" }));
   }
+  dom.modalContent.querySelector("[data-abandon-order]")?.addEventListener("click", openAbandonOrderConfirm);
 }
 
 function addIngredientSelection(id) {
@@ -7175,9 +7384,22 @@ function playTripEffect() {
   root.classList.add("pvp-tilt-anim");
   setTimeout(() => root.classList.remove("pvp-tilt-anim"), 700);
 
-  // 3. 💫 별 오버레이 (스턴 지속시간 동안)
+  // 3. 별 오버레이 (스턴 지속시간 동안)
   dom.pvpStarsOverlay.classList.remove("hidden");
+  updatePvpStarsOverlayPosition();
   setTimeout(() => dom.pvpStarsOverlay.classList.add("hidden"), PVP_TRIP_DURATION_MS);
+}
+
+function updatePvpStarsOverlayPosition() {
+  const overlay = dom.pvpStarsOverlay;
+  if (!overlay || overlay.classList.contains("hidden") || !player) return;
+  pvpStarsWorldPos.copy(player.position);
+  pvpStarsWorldPos.y += 2.2;
+  pvpStarsWorldPos.project(camera);
+  const x = (pvpStarsWorldPos.x * 0.5 + 0.5) * window.innerWidth;
+  const y = (-pvpStarsWorldPos.y * 0.5 + 0.5) * window.innerHeight;
+  overlay.style.left = `${x}px`;
+  overlay.style.top = `${y}px`;
 }
 
 // ── 먹물 이펙트 ──
@@ -7572,6 +7794,7 @@ function recordDayHistory(won) {
     coins: state.serviceStats.coinsEarned,
     reputation: state.serviceStats.reputationEarned,
     dishes: state.serviceStats.dishes,
+    penaltyScore: state.serviceStats.penaltyScore || 0,
   };
   state.history.push(entry);
   state.history = state.history.slice(-20);
@@ -7586,16 +7809,18 @@ function makeServiceSummary(won, reason = "") {
     coinsEarned: 0,
     reputationEarned: 0,
     dishes: [],
+    penaltyScore: 0,
   };
   const elapsed = formatClearTime(getElapsedSeconds());
   const dishSummary = stats.dishes.length
     ? stats.dishes.map((dish) => `${dish.name} ${dish.score}점`).join(" · ")
     : "완료한 주문 없음";
+  const penaltyLine = stats.penaltyScore ? ` · 포기 패널티 ${stats.penaltyScore}점` : "";
   if (state.gameMode === "challenge") {
     const totalScore = getChallengeRunScore();
     const averageScore = stats.completedOrders ? Math.round(totalScore / stats.completedOrders) : 0;
     return `${reason || "챌린지가 종료되었습니다."}
-완료 주문 ${stats.completedOrders}개 · 누적 점수 ${totalScore}점 · 평균 ${averageScore}점 · 최고 점수 ${stats.bestScore}점
+완료 주문 ${stats.completedOrders}개 · 누적 점수 ${totalScore}점${penaltyLine} · 평균 ${averageScore}점 · 최고 점수 ${stats.bestScore}점
 이번 도전에서 번 코인 ${stats.coinsEarned} · 평판 +${stats.reputationEarned} · 현재 등급 ${getReputationTier().name}
 라운드 조건 ${state.dailyEvent?.name || "없음"} · 플레이 시간 ${elapsed}
 완성 요리: ${dishSummary}`;
