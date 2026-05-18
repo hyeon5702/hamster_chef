@@ -1847,16 +1847,12 @@ function refreshStartActions() {
   const loggedIn = Boolean(state.authUser);
   const hasCareerSave = loggedIn && hasPlayableProgress(getSavedProgress("career"));
   dom.startButton.disabled = !loggedIn;
-  dom.careerButton.disabled = !loggedIn;
   dom.leaderboardButton.disabled = !loggedIn;
   dom.historyButton.disabled = !loggedIn;
   dom.multiButton.disabled = !loggedIn;
   if (dom.continueButton) {
     dom.continueButton.disabled = !loggedIn;
     dom.continueButton.classList.add("hidden");
-  }
-  if (dom.careerButton) {
-    dom.careerButton.textContent = hasCareerSave ? "성장 모드 이어하기" : "성장 모드 시작";
   }
   dom.startActions.classList.toggle("hidden", !loggedIn);
 }

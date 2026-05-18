@@ -15,10 +15,6 @@
         <div class="brand-lockup">
           <p class="eyebrow">tiny bistro adventure</p>
           <h1>햄스터 셰프</h1>
-          <p class="start-copy">
-            작은 식당의 요리사 햄스터가 되어 짧고 치열한 챌린지 영업에 도전하거나,
-            느긋한 성장 모드에서 식당을 키워보세요.
-          </p>
           <section id="auth-panel" class="auth-panel" aria-label="계정">
             <div class="auth-header">
               <strong id="auth-status">계정 확인 중...</strong>
@@ -45,26 +41,16 @@
             </div>
           </section>
           <div id="start-actions" class="start-actions hidden">
-            <article class="mode-card">
-              <h2>챌린지 모드</h2>
-              <p>제한시간 안에 주문을 완성하고 점수와 클리어 시간으로 기록을 겨뤄보세요.</p>
-              <div class="mode-actions">
-                <button id="start-button" class="primary-action" type="button">챌린지 시작</button>
-              </div>
-            </article>
-            <article class="mode-card mode-card-upcoming">
-              <h2>성장 모드</h2>
-              <p>제한 시간 없이 요리를 만들고 돈을 벌며 업그레이드와 가구로 식당을 키우는 장기 플레이 모드입니다.</p>
-              <div class="mode-actions">
-                <button id="career-button" class="primary-action secondary-action" type="button">성장 모드 시작</button>
-              </div>
-            </article>
-            <div class="start-utility-actions">
+            <div class="primary-modes">
+              <button id="start-button" class="primary-action" type="button">챌린지 시작</button>
               <button id="multi-button" class="primary-action secondary-action" type="button">🐹 멀티 챌린지</button>
-              <button id="leaderboard-button" class="primary-action secondary-action" type="button">챌린지 랭킹</button>
-              <button id="tutorial-button" class="primary-action secondary-action" type="button">튜토리얼 플레이</button>
-              <button id="history-button" class="primary-action secondary-action" type="button">영업 기록</button>
             </div>
+            <div class="start-utility-actions">
+              <button id="leaderboard-button" class="util-btn" type="button">챌린지 랭킹</button>
+              <button id="tutorial-button" class="util-btn" type="button">튜토리얼</button>
+              <button id="history-button" class="util-btn" type="button">영업 기록</button>
+            </div>
+            <button id="career-button" class="mode-coming-soon" type="button" disabled>성장 모드 — 준비 중</button>
           </div>
         </div>
       </section>

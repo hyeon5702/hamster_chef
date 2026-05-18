@@ -113,14 +113,6 @@ button {
   text-transform: uppercase;
 }
 
-.start-copy {
-  max-width: 32rem;
-  margin: 0;
-  font-size: clamp(18px, 2vw, 24px);
-  line-height: 1.55;
-  white-space: pre-line;
-}
-
 #result-copy {
   max-width: 520px;
   margin: 22px 0 30px;
@@ -155,45 +147,66 @@ button {
 
 .mode-card {
   width: 100%;
-  display: grid;
-  gap: 10px;
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 8px;
-  text-align: left;
   background: rgba(255, 248, 232, 0.12);
   box-shadow: 0 14px 30px rgba(20, 18, 16, 0.16);
 }
 
-.mode-card h2,
-.mode-card p {
-  margin: 0;
+.primary-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
 }
 
-.mode-card h2 {
-  font-size: 28px;
-  line-height: 1.1;
+.primary-modes button {
+  width: 100%;
+  padding: 14px 24px;
+  font-size: 20px;
 }
 
-.mode-card p {
-  color: rgba(255, 248, 232, 0.92);
-  font-size: 17px;
-  line-height: 1.55;
-}
-
-.mode-card-upcoming {
-  background: rgba(94, 66, 109, 0.24);
-}
-
-.mode-actions,
 .start-utility-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
 }
 
-.start-utility-actions {
-  width: 100%;
+.util-btn {
+  flex: 1 1 auto;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  color: var(--ink);
+  background: rgba(255, 248, 232, 0.72);
+  box-shadow: 0 6px 16px rgba(31, 24, 19, 0.14);
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.util-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.mode-coming-soon {
+  align-self: center;
+  min-height: 0;
+  border: 0;
+  border-radius: 20px;
+  padding: 6px 14px;
+  color: rgba(255, 248, 232, 0.52);
+  background: rgba(255, 248, 232, 0.1);
+  cursor: not-allowed;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: 0.01em;
 }
 
 .auth-panel {
@@ -283,8 +296,7 @@ button {
   gap: 10px;
 }
 
-.auth-actions button,
-.start-actions button {
+.auth-actions button {
   flex: 1 1 220px;
 }
 
@@ -2896,10 +2908,6 @@ button {
     font-size: clamp(38px, 11vw, 58px);
   }
 
-  .start-copy {
-    font-size: 18px;
-  }
-
   .hud {
     top: 10px;
     left: 10px;
@@ -2922,16 +2930,7 @@ button {
     padding: 16px;
   }
 
-  .mode-card {
-    padding: 16px;
-  }
-
-  .mode-card h2 {
-    font-size: 24px;
-  }
-
-  .auth-actions button,
-  .start-actions button {
+  .auth-actions button {
     flex-basis: 100%;
   }
 
