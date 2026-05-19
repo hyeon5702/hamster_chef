@@ -242,7 +242,7 @@ const PANIC_BGM_PATH = "./assets/audio/minute-de-panique.mp3";
 const PANIC_BGM_THRESHOLD = 60; // 남은 시간(초) 이하일 때 긴박한 BGM 전환
 
 // PvP 멀티 챌린지
-const PVP_SABOTAGE_COOLDOWNS_MS = { trip: 22000, ink: 22000, bomb: 35000 };
+const PVP_SABOTAGE_COOLDOWNS_MS = { trip: 45000, ink: 45000, bomb: 35000 };
 const PVP_TRIP_DURATION_MS = 5000;
 const PVP_INK_DURATION_MS = 5000;
 const PVP_BOMB_DURATION_MS = 30000;
@@ -528,6 +528,9 @@ const state = {
   pvpScoreBroadcastTimer: 0,
   pvpDoneWaitTimer: null,
   pvpTripUntil: 0,       // timestamp: 이동 불가 종료 시점
+  _pvpTripTimeout: null, // trip 디버프 failsafe setTimeout id
+  _pvpStarsTimeout: null, // 별 오버레이 hide setTimeout id
+  pvpCameraShake: 0,     // 남은 카메라 흔들기 시간(ms)
   pvpSlowUntil: 0,       // timestamp: 이동속도 50% 감소 종료 시점
   pvpBombs: [],          // [{ id, mesh, spark, interactable, expiresAt, fromNickname }]
   pvpInkActive: false,
@@ -3724,27 +3727,31 @@ function toggleSound() {
 }
 
 function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
-
-  if (state.running && !state.gameOver && !state.paused) {
-    updatePlayer(dt);
-    updateTimer(dt);
-    updateInteractables();
-    animateMarkers(dt);
-    updateHelperHamster(dt);
-    updateTutorialGuide();
-    updateQuestArrow();
-    checkMopProgress();
-    updatePvpFrame(dt);
-    if (questArrow?.visible) {
-      questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
-    }
-  }
-
-  updateCamera(dt);
-  updatePvpStarsOverlayPosition();
-  renderer.render(scene, camera);
+  // requestAnimationFrame은 try 바깥에 위치 — 어떤 예외가 발생해도 루프가 멈추지 않음
   requestAnimationFrame(animate);
+
+  const dt = Math.min(clock.getDelta(), 0.05);
+  try {
+    if (state.running && !state.gameOver && !state.paused) {
+      updatePlayer(dt);
+      updateTimer(dt);
+      updateInteractables();
+      animateMarkers(dt);
+      updateHelperHamster(dt);
+      updateTutorialGuide();
+      updateQuestArrow();
+      checkMopProgress();
+      updatePvpFrame(dt);
+      if (questArrow?.visible) {
+        questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
+      }
+    }
+    updateCamera(dt);
+    updatePvpStarsOverlayPosition();
+    renderer.render(scene, camera);
+  } catch (e) {
+    console.error("[animate] exception caught:", e);
+  }
 }
 
 function updatePlayer(dt) {
@@ -3787,6 +3794,19 @@ function updateCamera(dt) {
   const parallax = new THREE.Vector3(pointer.x * 0.9, pointer.y * 0.25, 0);
   const target = lookAt.clone().add(new THREE.Vector3(0, 7.2, 10.8)).add(parallax);
   camera.position.lerp(target, 1 - Math.pow(0.001, dt));
+
+  // PvP 넘어뜨리기 — THREE.js 카메라 흔들기
+  // CSS transform 방식은 ① canvas-shake가 3D뷰만 흔들고 오버레이는 제자리라 어색,
+  // ② pvp-tilt-wrap에 transform이 걸리면 position:fixed 자식의 containing block이 깨짐.
+  // 카메라 자체를 흔들면 project()로 계산되는 별 오버레이 위치도 함께 흔들려 자연스럽다.
+  if (state.pvpCameraShake > 0) {
+    state.pvpCameraShake = Math.max(0, state.pvpCameraShake - dt * 1000);
+    const t = state.pvpCameraShake / 650; // 1(시작)→0(종료)
+    const now = performance.now();
+    camera.position.x += (Math.sin(now * 0.083) * 0.6 + Math.sin(now * 0.19) * 0.4) * t * 0.28;
+    camera.position.y += (Math.cos(now * 0.067) * 0.6 + Math.cos(now * 0.15) * 0.4) * t * 0.14;
+  }
+
   camera.lookAt(lookAt);
 }
 
@@ -7001,6 +7021,13 @@ async function joinPvpRoom(code) {
 }
 
 let pvpChannel = null;
+let opponentMesh = null;       // 상대방 캐릭터 Three.js Group
+let opponentCarryMesh = null;  // 상대방 carry 박스 메시
+let opponentNametagEl = null;  // 상대방 이름표 DOM element
+let opponentTargetX = 0, opponentTargetZ = 0, opponentTargetRY = 0;
+let pvpPosBroadcastTimer = 0;
+let sabotageMotionRaf = null;  // 현재 실행 중인 방해 모션 RAF id
+const pvpStarsWorldPos = new THREE.Vector3(); // updatePvpStarsOverlayPosition 재사용 벡터
 
 function setupPvpChannel(roomCode) {
   const client = getSupabase();
@@ -7026,6 +7053,7 @@ function setupPvpChannel(roomCode) {
   // 게임 시작 신호
   pvpChannel.on("broadcast", { event: "game_start" }, ({ payload }) => {
     if (!state.pvpRoom?.isHost) {
+      state._pendingOpponentSkin = payload.skin || "default"; // 호스트 스킨 저장
       startPvpCountdown(payload.startAt);
     }
   });
@@ -7052,6 +7080,24 @@ function setupPvpChannel(roomCode) {
       showToast(`💦 ${payload.targetNickname}이(가) 폭탄을 해제했습니다!`);
     } else if (payload.result === "bomb_exploded") {
       showToast(`💥 ${payload.targetNickname}의 폭탄이 폭발했습니다!`);
+    }
+  });
+
+  // 상대방 위치 동기화
+  pvpChannel.on("broadcast", { event: "pos_update" }, ({ payload }) => {
+    opponentTargetX = payload.x;
+    opponentTargetZ = payload.z;
+    opponentTargetRY = payload.ry;
+    if (opponentCarryMesh) opponentCarryMesh.visible = !!payload.carry;
+    // 메시가 아직 없으면 기본 스킨으로 임시 생성
+    if (!opponentMesh && state.running) createOpponentMesh(state._pendingOpponentSkin || "default");
+  });
+
+  // 상대방 게임 준비 완료 (스킨 정보 포함)
+  pvpChannel.on("broadcast", { event: "player_ready" }, ({ payload }) => {
+    state._pendingOpponentSkin = payload.skin;
+    if (state.running) {
+      createOpponentMesh(payload.skin);
     }
   });
 
@@ -7109,7 +7155,7 @@ function showPvpLobby() {
   if (canStart) {
     dom.modalContent.querySelector("#pvp-start-btn")?.addEventListener("click", () => {
       const startAt = Date.now() + 3500;
-      pvpChannel?.send({ type: "broadcast", event: "game_start", payload: { startAt } });
+      pvpChannel?.send({ type: "broadcast", event: "game_start", payload: { startAt, skin: state.selectedSkin || "default" } });
       startPvpCountdown(startAt);
     });
   }
@@ -7153,6 +7199,16 @@ async function startChallengeGamePvp() {
   dom.pvpOpponentHud.classList.remove("hidden");
   updatePvpOpponentHud();
   updatePvpSabotagePanel();
+
+  // 내 스킨 정보 상대방에게 전송 + 상대방 스킨이 이미 수신됐으면 메시 생성
+  pvpChannel?.send({
+    type: "broadcast", event: "player_ready",
+    payload: { skin: state.selectedSkin || "default" },
+  });
+  if (state._pendingOpponentSkin) {
+    createOpponentMesh(state._pendingOpponentSkin);
+    state._pendingOpponentSkin = null;
+  }
 }
 
 async function leavePvpRoom() {
@@ -7168,6 +7224,9 @@ async function leavePvpRoom() {
     }
   }
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
+  removeOpponentMesh();
+  pvpPosBroadcastTimer = 0;
+  state._pendingOpponentSkin = null;
   clearPvpDebuffs();
   state.pvpRoom = null;
   state.pvpOpponent = null;
@@ -7193,6 +7252,44 @@ async function leavePvpRoom() {
     refreshStartActions();
     updateHud();
   }
+}
+
+// ── 상대방 캐릭터 메시 ──────────────────────────────────────────────
+function createOpponentMesh(skinId) {
+  removeOpponentMesh();
+  const savedCarry = playerCarryMesh;
+  opponentMesh = buildSkinMesh(skinId || "default");
+  opponentCarryMesh = playerCarryMesh; // buildSkinMesh가 설정한 carry 메시 캡처
+  playerCarryMesh = savedCarry;        // 내 플레이어 carry 메시 복원
+  // 초기 위치: 상대방 시작 지점 (플레이어와 반대쪽)
+  opponentTargetX = opponentMesh.position.x = 2;
+  opponentTargetZ = opponentMesh.position.z = 2;
+  scene.add(opponentMesh);
+
+  // 이름표 DOM 생성
+  opponentNametagEl = document.createElement("div");
+  opponentNametagEl.className = "pvp-nametag";
+  opponentNametagEl.textContent = state.pvpOpponent?.nickname || "상대방";
+  document.getElementById("game-root")?.appendChild(opponentNametagEl);
+}
+
+function removeOpponentMesh() {
+  if (opponentMesh) { scene.remove(opponentMesh); opponentMesh = null; opponentCarryMesh = null; }
+  if (opponentNametagEl) { opponentNametagEl.remove(); opponentNametagEl = null; }
+}
+
+function updateOpponentNametag() {
+  if (!opponentMesh || !opponentNametagEl || !renderer) return;
+  const pos = opponentMesh.position.clone();
+  pos.y += 2.7;
+  pos.project(camera);
+  const cv = renderer.domElement;
+  const x = (pos.x * 0.5 + 0.5) * cv.clientWidth;
+  const y = (-pos.y * 0.5 + 0.5) * cv.clientHeight;
+  if (pos.z >= 1) { opponentNametagEl.style.display = "none"; return; }
+  opponentNametagEl.style.display = "block";
+  opponentNametagEl.style.left = x + "px";
+  opponentNametagEl.style.top = y + "px";
 }
 
 function broadcastPvpScore() {
@@ -7227,128 +7324,140 @@ function sendSabotage(type) {
   });
 }
 
+function stopSabotageMotion() {
+  if (sabotageMotionRaf !== null) {
+    cancelAnimationFrame(sabotageMotionRaf);
+    sabotageMotionRaf = null;
+  }
+  if (player) {
+    player.rotation.x = 0; player.rotation.z = 0;
+    player.scale.set(1, 1, 1); player.position.y = 0;
+  }
+}
+
 function playSabotageMotion(type) {
   if (!player) return;
+
+  // 이전 모션 RAF 취소 후 플레이어 상태 초기화 (중첩 방지)
+  stopSabotageMotion();
+
   const t0 = performance.now();
-  const sx = player.scale.x, sy = player.scale.y, sz = player.scale.z;
 
   if (type === "bomb") {
     // 웅크리기 → 점프+백스윙 → 폭발적 투척 → 착지 바운스
     const dur = 680;
-    (function animate(now) {
+    (function animBomb(now) {
+      // 게임이 끝났거나 플레이어가 없으면 즉시 중단
+      if (!player || !state.running) { sabotageMotionRaf = null; return; }
       const t = Math.min((now - t0) / dur, 1);
       if (t < 0.15) {
-        // 웅크리기 (anticipation)
         const p = t / 0.15;
         player.rotation.x = p * 0.3;
-        player.scale.set(sx * (1 + p * 0.12), sy * (1 - p * 0.22), sz * (1 + p * 0.12));
+        player.scale.set(1 + p * 0.12, 1 - p * 0.22, 1 + p * 0.12);
         player.position.y = -p * 0.08;
       } else if (t < 0.42) {
-        // 점프 + 백스윙
         const p = (t - 0.15) / 0.27;
         player.rotation.x = 0.3 - p * 0.95;
-        player.scale.set(sx * (1.12 - p * 0.12), sy * (0.78 + p * 0.44), sz * (1.12 - p * 0.12));
+        player.scale.set(1.12 - p * 0.12, 0.78 + p * 0.44, 1.12 - p * 0.12);
         player.position.y = Math.sin(p * Math.PI) * 0.65;
       } else if (t < 0.62) {
-        // 투척 (전방으로 빠르게)
         const p = (t - 0.42) / 0.20;
         player.rotation.x = -0.65 + p * 1.0;
-        player.rotation.z = Math.sin(p * Math.PI) * 0.18; // 약간 옆 비틀기
-        player.scale.set(sx * (1 + p * 0.06), sy * (1.22 - p * 0.3), sz * (1 + p * 0.06));
+        player.rotation.z = Math.sin(p * Math.PI) * 0.18;
+        player.scale.set(1 + p * 0.06, 1.22 - p * 0.3, 1 + p * 0.06);
         player.position.y = Math.max(0, 0.65 * (1 - p * 2.2));
       } else if (t < 0.82) {
-        // 착지 충격
         const p = (t - 0.62) / 0.20;
         player.rotation.x = 0.35 - p * 0.35;
         player.rotation.z = 0.18 * (1 - p);
-        player.scale.set(sx * (1.06 - p * 0.06), sy * (0.92 + p * 0.08), sz * (1.06 - p * 0.06));
+        player.scale.set(1.06 - p * 0.06, 0.92 + p * 0.08, 1.06 - p * 0.06);
         player.position.y = 0;
       } else {
-        // 잔여 흔들림 정착
         const p = (t - 0.82) / 0.18;
         player.rotation.x = Math.sin((1 - p) * Math.PI * 2.5) * 0.06 * (1 - p);
         player.rotation.z = 0;
-        player.scale.set(sx, sy, sz);
+        player.scale.set(1, 1, 1);
         player.position.y = 0;
       }
-      if (t < 1) requestAnimationFrame(animate);
-      else {
+      if (t < 1) {
+        sabotageMotionRaf = requestAnimationFrame(animBomb);
+      } else {
+        sabotageMotionRaf = null;
         player.rotation.x = 0; player.rotation.z = 0;
-        player.scale.set(sx, sy, sz); player.position.y = 0;
+        player.scale.set(1, 1, 1); player.position.y = 0;
       }
     })(t0);
 
   } else if (type === "ink") {
     // 준비 → 빠른 좌우 분무 진동 → 잔여 떨림
     const dur = 620;
-    (function animate(now) {
+    (function animInk(now) {
+      if (!player || !state.running) { sabotageMotionRaf = null; return; }
       const t = Math.min((now - t0) / dur, 1);
       if (t < 0.10) {
-        // 몸 뒤로 살짝 당기기 (준비)
         const p = t / 0.10;
         player.rotation.x = p * 0.2;
-        player.scale.set(sx * (1 - p * 0.1), sy * (1 + p * 0.1), sz * (1 - p * 0.1));
+        player.scale.set(1 - p * 0.1, 1 + p * 0.1, 1 - p * 0.1);
       } else if (t < 0.72) {
-        // 격렬한 분무 (고주파 진동 + 스케일 펄스)
         const p = (t - 0.10) / 0.62;
         const decay = 1 - p * 0.4;
         player.rotation.z = Math.sin(p * Math.PI * 8) * 0.55 * decay;
         player.rotation.x = 0.2 + Math.sin(p * Math.PI * 4) * 0.22;
         const pulse = 1 + Math.abs(Math.sin(p * Math.PI * 6)) * 0.12 * decay;
-        player.scale.set(sx * pulse, sy / pulse, sz * pulse);
+        player.scale.set(pulse, 1 / pulse, pulse);
         player.position.y = Math.abs(Math.sin(p * Math.PI * 5)) * 0.12 * decay;
       } else {
-        // 정착
         const p = (t - 0.72) / 0.28;
         player.rotation.z = Math.sin((1 - p) * Math.PI * 2) * 0.08 * (1 - p);
         player.rotation.x = 0.2 * (1 - p);
-        player.scale.set(sx, sy, sz);
+        player.scale.set(1, 1, 1);
         player.position.y = 0;
       }
-      if (t < 1) requestAnimationFrame(animate);
-      else {
+      if (t < 1) {
+        sabotageMotionRaf = requestAnimationFrame(animInk);
+      } else {
+        sabotageMotionRaf = null;
         player.rotation.z = 0; player.rotation.x = 0;
-        player.scale.set(sx, sy, sz); player.position.y = 0;
+        player.scale.set(1, 1, 1); player.position.y = 0;
       }
     })(t0);
 
   } else if (type === "trip") {
     // 백스윙 → 폭발적 발차기 점프 → 착지 쿵 → 바운스 정착
     const dur = 580;
-    (function animate(now) {
+    (function animTrip(now) {
+      if (!player || !state.running) { sabotageMotionRaf = null; return; }
       const t = Math.min((now - t0) / dur, 1);
       if (t < 0.15) {
-        // 백스윙 (뒤로 기울기)
         const p = t / 0.15;
         player.rotation.x = p * 0.4;
-        player.scale.set(sx * (1 + p * 0.08), sy * (1 - p * 0.18), sz * (1 + p * 0.08));
+        player.scale.set(1 + p * 0.08, 1 - p * 0.18, 1 + p * 0.08);
       } else if (t < 0.42) {
-        // 폭발적 발차기
         const p = (t - 0.15) / 0.27;
-        player.rotation.x = 0.4 - p * 1.25; // 0.4 → -0.85
-        player.rotation.z = Math.sin(p * Math.PI) * 0.22; // 킥 비틀기
-        player.scale.set(sx * (1.08 - p * 0.08), sy * (0.82 + p * 0.52), sz * (1.08 - p * 0.08));
+        player.rotation.x = 0.4 - p * 1.25;
+        player.rotation.z = Math.sin(p * Math.PI) * 0.22;
+        player.scale.set(1.08 - p * 0.08, 0.82 + p * 0.52, 1.08 - p * 0.08);
         player.position.y = Math.sin(p * Math.PI) * 0.72;
       } else if (t < 0.58) {
-        // 착지 쿵
         const p = (t - 0.42) / 0.16;
         player.rotation.x = -0.85 + p * 1.05;
         player.rotation.z = 0.22 * (1 - p);
-        player.scale.set(sx * (1 + p * 0.12), sy * (1.34 - p * 0.5), sz * (1 + p * 0.12));
+        player.scale.set(1 + p * 0.12, 1.34 - p * 0.5, 1 + p * 0.12);
         player.position.y = 0;
       } else {
-        // 바운스 정착
         const p = (t - 0.58) / 0.42;
         player.rotation.x = 0.2 * Math.cos(p * Math.PI * 3) * (1 - p);
         player.rotation.z = 0;
         const bounce = 1 + Math.cos(p * Math.PI * 3) * 0.06 * (1 - p);
-        player.scale.set(sx * bounce, sy / bounce, sz * bounce);
+        player.scale.set(bounce, 1 / bounce, bounce);
         player.position.y = Math.max(0, Math.sin(p * Math.PI * 2) * 0.1 * (1 - p));
       }
-      if (t < 1) requestAnimationFrame(animate);
-      else {
+      if (t < 1) {
+        sabotageMotionRaf = requestAnimationFrame(animTrip);
+      } else {
+        sabotageMotionRaf = null;
         player.rotation.x = 0; player.rotation.z = 0;
-        player.scale.set(sx, sy, sz); player.position.y = 0;
+        player.scale.set(1, 1, 1); player.position.y = 0;
       }
     })(t0);
   }
@@ -7357,7 +7466,15 @@ function playSabotageMotion(type) {
 function applyPvpDebuff(type, fromNickname) {
   if (!state.running || state.gameOver) return;
   if (type === "trip") {
+    // 기존 failsafe 타이머 취소 후 재설정
+    if (state._pvpTripTimeout) { clearTimeout(state._pvpTripTimeout); state._pvpTripTimeout = null; }
     state.pvpTripUntil = Date.now() + PVP_TRIP_DURATION_MS;
+    // updatePlayer의 early-return이 어떤 이유로 실패해도 반드시 스턴 해제
+    state._pvpTripTimeout = setTimeout(() => {
+      state.pvpTripUntil = 0;
+      state._pvpTripTimeout = null;
+      if (player) player.rotation.z = 0;
+    }, PVP_TRIP_DURATION_MS + 100);
     showToast(`😵 ${fromNickname}이(가) 넘어뜨렸습니다! 5초간 이동 불가`);
     playTripEffect();
   } else if (type === "ink") {
@@ -7379,15 +7496,24 @@ function playTripEffect() {
     dom.pvpRedFlash.classList.remove("pvp-flash-anim");
   }, 600);
 
-  // 2. 화면 기울기
-  const root = document.getElementById("game-root");
-  root.classList.add("pvp-tilt-anim");
-  setTimeout(() => root.classList.remove("pvp-tilt-anim"), 700);
+  // 2. 화면 흔들기 — THREE.js 카메라를 직접 흔든다.
+  //    CSS transform 방식(canvas 또는 pvp-tilt-wrap)은 ① 3D뷰만 흔들리고
+  //    오버레이가 제자리라 어색하거나, ② position:fixed 자식의 containing block을
+  //    깨트리는 부작용이 있다. 카메라를 흔들면 project()로 계산되는
+  //    별 오버레이 위치도 자연스럽게 함께 흔들린다.
+  state.pvpCameraShake = 650; // ms — updateCamera에서 차감
+  // 2b. 빨간 비네트 테두리 (transform 없음, box-shadow만)
+  dom.pvpTiltWrap.classList.add("pvp-tilt-anim");
+  setTimeout(() => dom.pvpTiltWrap.classList.remove("pvp-tilt-anim"), 700);
 
-  // 3. 별 오버레이 (스턴 지속시간 동안)
+  // 3. 별 오버레이 (스턴 지속시간 동안) — 이전 타임아웃 취소 후 재설정
+  if (state._pvpStarsTimeout) { clearTimeout(state._pvpStarsTimeout); }
   dom.pvpStarsOverlay.classList.remove("hidden");
   updatePvpStarsOverlayPosition();
-  setTimeout(() => dom.pvpStarsOverlay.classList.add("hidden"), PVP_TRIP_DURATION_MS);
+  state._pvpStarsTimeout = setTimeout(() => {
+    dom.pvpStarsOverlay.classList.add("hidden");
+    state._pvpStarsTimeout = null;
+  }, PVP_TRIP_DURATION_MS);
 }
 
 function updatePvpStarsOverlayPosition() {
@@ -7488,7 +7614,7 @@ function spawnPvpBomb(fromNickname = "상대방") {
   updatePvpBombHud();
 }
 
-let defuseMiniGame = null; // { raf, hits, cursorPos, cursorDir, speed, zoneLeft, zoneRight, lastTime, bomb }
+let defuseMiniGame = null; // { hits, cursorPos, cursorDir, speed, zoneLeft, zoneRight, bomb }
 let skinPreview = null;   // { raf, renderer, scene, camera, mesh }
 
 function defusePvpBomb(bomb) {
@@ -7498,14 +7624,12 @@ function defusePvpBomb(bomb) {
 
 function openDefuseMinigame(bomb) {
   const zoneCenter = 0.30 + Math.random() * 0.40;
-  const zoneHalf = 0.045; // 기존의 절반
+  const zoneHalf = 0.045;
   defuseMiniGame = {
     hits: 0, cursorPos: 0, cursorDir: 1,
-    speed: 0.70, // 기존의 2배
+    speed: 0.70,
     zoneLeft: zoneCenter - zoneHalf,
     zoneRight: zoneCenter + zoneHalf,
-    lastTime: performance.now(),
-    raf: null,
     bomb,
   };
 
@@ -7515,19 +7639,7 @@ function openDefuseMinigame(bomb) {
   zone.style.width = `${zoneHalf * 2 * 100}%`;
   document.querySelectorAll(".defuse-hit").forEach(h => h.classList.remove("active"));
   el.classList.remove("hidden");
-
-  function tick(now) {
-    if (!defuseMiniGame) return;
-    const dt = Math.min((now - defuseMiniGame.lastTime) / 1000, 0.05);
-    defuseMiniGame.lastTime = now;
-    defuseMiniGame.cursorPos += defuseMiniGame.cursorDir * defuseMiniGame.speed * dt;
-    if (defuseMiniGame.cursorPos >= 1) { defuseMiniGame.cursorPos = 1; defuseMiniGame.cursorDir = -1; }
-    if (defuseMiniGame.cursorPos <= 0) { defuseMiniGame.cursorPos = 0; defuseMiniGame.cursorDir = 1; }
-    const cursor = document.getElementById("defuse-cursor");
-    if (cursor) cursor.style.left = `${defuseMiniGame.cursorPos * 100}%`;
-    defuseMiniGame.raf = requestAnimationFrame(tick);
-  }
-  defuseMiniGame.raf = requestAnimationFrame(tick);
+  // 커서 업데이트는 메인 animate() 루프의 updatePvpFrame(dt)에서 처리
 }
 
 function attemptDefuseHit() {
@@ -7566,7 +7678,6 @@ function attemptDefuseHit() {
 
 function closeDefuseMinigame() {
   if (!defuseMiniGame) return;
-  cancelAnimationFrame(defuseMiniGame.raf);
   defuseMiniGame = null;
   document.getElementById("defuse-minigame")?.classList.add("hidden");
 }
@@ -7626,14 +7737,21 @@ function updatePvpBombHud() {
 }
 
 function clearPvpDebuffs() {
+  // trip failsafe 타이머 취소
+  if (state._pvpTripTimeout) { clearTimeout(state._pvpTripTimeout); state._pvpTripTimeout = null; }
   state.pvpTripUntil = 0;
   state.pvpSlowUntil = 0;
   state.pvpInkActive = false;
   player && (player.rotation.z = 0);
+  // 방해 모션 RAF 완전 정리
+  stopSabotageMotion();
   closeDefuseMinigame();
   removePvpBomb();
+  if (state._pvpStarsTimeout) { clearTimeout(state._pvpStarsTimeout); state._pvpStarsTimeout = null; }
+  state.pvpCameraShake = 0;
   dom.pvpStarsOverlay?.classList.add("hidden");
   dom.pvpInkOverlay?.classList.add("hidden");
+  dom.pvpTiltWrap?.classList.remove("pvp-tilt-anim");
 }
 
 function endPvpGame() {
@@ -7708,6 +7826,9 @@ async function leavePvpRoomSilent() {
     await client.from("challenge_rooms").update({ status: "done" }).eq("room_code", room.roomCode);
   }
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
+  removeOpponentMesh();
+  pvpPosBroadcastTimer = 0;
+  state._pendingOpponentSkin = null;
   clearPvpDebuffs();
   state.pvpRoom = null;
   state.pvpOpponent = null;
@@ -7722,6 +7843,43 @@ function updatePvpFrame(dt) {
     state.pvpScoreBroadcastTimer = 0;
     broadcastPvpScore();
   }
+
+  // 위치 브로드캐스트 (~80ms마다)
+  pvpPosBroadcastTimer += dt * 1000;
+  if (pvpPosBroadcastTimer >= 80 && player && pvpChannel) {
+    pvpPosBroadcastTimer = 0;
+    pvpChannel.send({
+      type: "broadcast", event: "pos_update",
+      payload: {
+        x: player.position.x,
+        z: player.position.z,
+        ry: player.rotation.y,
+        carry: !!playerCarryMesh?.visible,
+      },
+    });
+  }
+
+  // 상대방 캐릭터 위치 lerp
+  if (opponentMesh) {
+    const lf = Math.min(1, dt * 12);
+    opponentMesh.position.x += (opponentTargetX - opponentMesh.position.x) * lf;
+    opponentMesh.position.z += (opponentTargetZ - opponentMesh.position.z) * lf;
+    // 회전 최단 경로 보간
+    let dRY = opponentTargetRY - opponentMesh.rotation.y;
+    dRY = ((dRY + Math.PI) % (Math.PI * 2)) - Math.PI;
+    opponentMesh.rotation.y += dRY * lf;
+    updateOpponentNametag();
+  }
+
+  // 폭탄 해제 미니게임 커서 업데이트 (별도 RAF 없이 메인 루프에서 처리)
+  if (defuseMiniGame) {
+    defuseMiniGame.cursorPos += defuseMiniGame.cursorDir * defuseMiniGame.speed * dt;
+    if (defuseMiniGame.cursorPos >= 1) { defuseMiniGame.cursorPos = 1; defuseMiniGame.cursorDir = -1; }
+    if (defuseMiniGame.cursorPos <= 0) { defuseMiniGame.cursorPos = 0; defuseMiniGame.cursorDir = 1; }
+    const cursor = document.getElementById("defuse-cursor");
+    if (cursor) cursor.style.left = `${defuseMiniGame.cursorPos * 100}%`;
+  }
+
   // 쿨다운 만료 체크 → 버튼 상태 갱신
   updatePvpSabotagePanel();
   // 폭탄 타이머 체크 (배열 순회, 패널티 누적)
