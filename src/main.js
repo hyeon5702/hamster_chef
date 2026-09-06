@@ -2228,6 +2228,7 @@ function refreshStartActions() {
   dom.leaderboardButton.disabled = !loggedIn;
   dom.historyButton.disabled = !loggedIn;
   dom.multiButton.disabled = !loggedIn;
+  dom.careerButton.disabled = !loggedIn;
   if (dom.continueButton) {
     dom.continueButton.disabled = !loggedIn;
     dom.continueButton.classList.add("hidden");
