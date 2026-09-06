@@ -263,7 +263,6 @@ const BOMB_SPAWN_CANDIDATES = [
   [-1, -5], [1, -5], [-3, -5], [3, -5],
   [-6, 1], [6, 1], [-6, -1], [6, -1],
 ];
-const AUDIO_SESSION_KEY = `session-${Date.now()}`;
 const BGM_VOLUME_SCALE = 1 / 6;
 const EFFECTS_VOLUME_SCALE = 2.25;
 
@@ -8217,7 +8216,7 @@ function ensureAudio() {
 
 function ensureBgmAudio() {
   if (!bgmAudio) {
-    bgmAudio = new Audio(`${BGM_AUDIO_PATH}?v=${AUDIO_SESSION_KEY}`);
+    bgmAudio = new Audio(BGM_AUDIO_PATH);
     bgmAudio.loop = true;
     bgmAudio.preload = "auto";
     bgmAudio.load();
@@ -8232,7 +8231,7 @@ function ensureBgmAudio() {
 
 function ensurePanicBgmAudio() {
   if (!panicBgmAudio) {
-    panicBgmAudio = new Audio(`${PANIC_BGM_PATH}?v=${AUDIO_SESSION_KEY}`);
+    panicBgmAudio = new Audio(PANIC_BGM_PATH);
     panicBgmAudio.loop = true;
     panicBgmAudio.preload = "auto";
     panicBgmAudio.load();
