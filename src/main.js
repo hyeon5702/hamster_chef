@@ -241,6 +241,16 @@ const BGM_AUDIO_PATH = "./assets/audio/hamster-chef-bgm.mp3";
 const PANIC_BGM_PATH = "./assets/audio/minute-de-panique.mp3";
 const PANIC_BGM_THRESHOLD = 60; // 남은 시간(초) 이하일 때 긴박한 BGM 전환
 
+// 카메라 — 방향키로 플레이어 주위를 공전시킨다.
+// 기본값은 기존 고정 오프셋 (0, 7.2, 10.8)과 같은 거리·각도라서 회전을 건드리지 않으면 이전과 동일한 화면이 나온다.
+const CAMERA_DISTANCE = Math.hypot(10.8, 7.2);
+const CAMERA_BASE_PITCH = Math.atan2(7.2, 10.8);
+const CAMERA_MIN_PITCH = THREE.MathUtils.degToRad(10);
+const CAMERA_MAX_PITCH = THREE.MathUtils.degToRad(72);
+const CAMERA_YAW_SPEED = 2.1;   // rad/s
+const CAMERA_PITCH_SPEED = 1.3; // rad/s
+const CAMERA_UP_AXIS = new THREE.Vector3(0, 1, 0);
+
 // PvP 멀티 챌린지
 const PVP_SABOTAGE_COOLDOWNS_MS = { trip: 45000, ink: 45000, bomb: 35000 };
 const PVP_TRIP_DURATION_MS = 5000;
@@ -486,6 +496,8 @@ const state = {
   history: [],
   savedActiveDay: null,
   helperCooldown: 0,
+  cameraYaw: 0,
+  cameraPitch: CAMERA_BASE_PITCH,
   adminEnabled: false,
   dailyEvent: null,
   orderQueue: [],
@@ -538,6 +550,9 @@ const keys = new Set();
 const clock = new THREE.Clock();
 const pointer = new THREE.Vector2();
 const interactables = [];
+// 카메라를 돌려도 정면을 유지해야 하는 평면 간판들. 벽에 붙은 장식 간판은 넣지 않는다.
+const billboards = [];
+const billboardWorldPos = new THREE.Vector3();
 const stations = {};
 const worldObjects = {};
 const boundaries = { minX: -10.5, maxX: 10.5, minZ: -7.5, maxZ: 7.5 };
@@ -833,6 +848,7 @@ function createStation({ id, label, position, color, marker, action }) {
   const labelBoard = makeLabelBoard(label, color, "#fff8e8");
   labelBoard.position.set(0, 1.65, 0);
   group.add(labelBoard);
+  billboards.push(labelBoard);
 
   scene.add(group);
 
@@ -1304,6 +1320,11 @@ function setupInput() {
     if (event.key.toLowerCase() === "e" || event.key === "Enter") {
       if (defuseMiniGame) { attemptDefuseHit(); return; }
       if (!state.modalOpen && state.running) interact();
+    }
+
+    // 방향키는 카메라 회전에 쓰므로 페이지 스크롤로 새지 않게 막는다.
+    if (event.key.startsWith("Arrow") && state.running && !state.modalOpen) {
+      event.preventDefault();
     }
 
     keys.add(event.key.toLowerCase());
@@ -2988,7 +3009,11 @@ function openPauseHelp() {
     <div class="grid-list">
       <article class="choice-card">
         <h3>이동</h3>
-        <p><strong>WASD</strong> 또는 <strong>방향키</strong>로 이동하고 <strong>Shift</strong>로 빠르게 달립니다.</p>
+        <p><strong>WASD</strong>로 이동하고 <strong>Shift</strong>로 빠르게 달립니다.</p>
+      </article>
+      <article class="choice-card">
+        <h3>시점</h3>
+        <p><strong>← →</strong>로 카메라를 돌리고 <strong>↑ ↓</strong>로 내려다보는 각도를 조절합니다. 이동 방향은 돌린 화면을 기준으로 맞춰집니다.</p>
       </article>
       <article class="choice-card">
         <h3>상호작용</h3>
@@ -3110,7 +3135,7 @@ function getTutorialStepContent() {
   if (state.tutorialStep === 0) {
     return {
       title: "먼저 움직여보기",
-      copy: "<strong>WASD</strong> 또는 <strong>방향키</strong>로 햄스터를 움직여보세요. <strong>Shift</strong>를 누르면 더 빠르게 달립니다.",
+      copy: "<strong>WASD</strong>로 햄스터를 움직여보세요. <strong>Shift</strong>를 누르면 더 빠르게 달립니다. <strong>방향키</strong>로는 카메라를 돌려 볼 수 있습니다.",
     };
   }
 
@@ -3143,7 +3168,7 @@ function getTutorialStepContent() {
 <ul style="margin:6px 0 0 16px;padding:0;font-size:0.92em;line-height:1.7">
   <li><strong>타이밍</strong> — 게이지가 구간에 들어올 때 Space / 클릭</li>
   <li><strong>온도 조절</strong> — 불 키우기·줄이기 버튼으로 60~80°C 유지</li>
-  <li><strong>재료 썰기</strong> — 화살표 방향키 또는 버튼으로 재료 자르기</li>
+  <li><strong>재료 썰기</strong> — 칼이 초록 구간에 왔을 때 Space / 썰기 버튼</li>
   <li><strong>물 끓이기</strong> — 불 조절 버튼으로 적정 온도 구간 유지</li>
   <li><strong>반죽 치기</strong> — 제한시간 안에 버튼을 최대한 많이 눌러요</li>
   <li><strong>플레이팅</strong> — 떨어지는 재료를 접시 구역에서 클릭으로 받아요</li>
@@ -3694,6 +3719,8 @@ function startRunningDay() {
   state.running = true;
   state.gameOver = false;
   state.paused = false;
+  state.cameraYaw = 0;
+  state.cameraPitch = CAMERA_BASE_PITCH;
   ensureAudio();
   playClick();
   startMusic();
@@ -3761,13 +3788,14 @@ function updatePlayer(dt) {
   }
 
   const dir = new THREE.Vector3();
-  if (keys.has("w") || keys.has("arrowup")) dir.z -= 1;
-  if (keys.has("s") || keys.has("arrowdown")) dir.z += 1;
-  if (keys.has("a") || keys.has("arrowleft")) dir.x -= 1;
-  if (keys.has("d") || keys.has("arrowright")) dir.x += 1;
+  if (keys.has("w")) dir.z -= 1;
+  if (keys.has("s")) dir.z += 1;
+  if (keys.has("a")) dir.x -= 1;
+  if (keys.has("d")) dir.x += 1;
 
   if (dir.lengthSq() > 0) {
-    dir.normalize();
+    // 카메라를 돌려놓은 만큼 입력도 함께 돌린다. W는 언제나 "화면에서 위쪽".
+    dir.normalize().applyAxisAngle(CAMERA_UP_AXIS, state.cameraYaw);
     const speedMultiplier = 1 + getUpgradeLevel("shoes") * 0.12;
     const slowPenalty = (state.pvpSlowUntil && Date.now() < state.pvpSlowUntil) ? 0.5 : 1;
     const speed = (keys.has("shift") ? 5.4 : 3.6) * speedMultiplier * slowPenalty;
@@ -3784,9 +3812,28 @@ function updatePlayer(dt) {
 }
 
 function updateCamera(dt) {
+  // 방향키로 카메라 공전. 모달·미니게임 중에는 방향키가 그쪽 UI 조작에 쓰이므로 회전시키지 않는다.
+  if (state.running && !state.gameOver && !state.paused && !state.modalOpen) {
+    if (keys.has("arrowleft")) state.cameraYaw += CAMERA_YAW_SPEED * dt;
+    if (keys.has("arrowright")) state.cameraYaw -= CAMERA_YAW_SPEED * dt;
+    if (keys.has("arrowup")) {
+      state.cameraPitch = Math.min(CAMERA_MAX_PITCH, state.cameraPitch + CAMERA_PITCH_SPEED * dt);
+    }
+    if (keys.has("arrowdown")) {
+      state.cameraPitch = Math.max(CAMERA_MIN_PITCH, state.cameraPitch - CAMERA_PITCH_SPEED * dt);
+    }
+  }
+
   const lookAt = player ? player.position.clone().add(new THREE.Vector3(0, 0.95, 0)) : new THREE.Vector3();
-  const parallax = new THREE.Vector3(pointer.x * 0.9, pointer.y * 0.25, 0);
-  const target = lookAt.clone().add(new THREE.Vector3(0, 7.2, 10.8)).add(parallax);
+  const cosPitch = Math.cos(state.cameraPitch);
+  const orbit = new THREE.Vector3(
+    Math.sin(state.cameraYaw) * cosPitch * CAMERA_DISTANCE,
+    Math.sin(state.cameraPitch) * CAMERA_DISTANCE,
+    Math.cos(state.cameraYaw) * cosPitch * CAMERA_DISTANCE,
+  );
+  const parallax = new THREE.Vector3(pointer.x * 0.9, pointer.y * 0.25, 0)
+    .applyAxisAngle(CAMERA_UP_AXIS, state.cameraYaw);
+  const target = lookAt.clone().add(orbit).add(parallax);
   camera.position.lerp(target, 1 - Math.pow(0.001, dt));
 
   // PvP 넘어뜨리기 — THREE.js 카메라 흔들기
@@ -3802,6 +3849,19 @@ function updateCamera(dt) {
   }
 
   camera.lookAt(lookAt);
+  updateBillboards();
+}
+
+// 간판이 평면이라 카메라를 돌리면 옆면만 보인다. Y축만 돌려 글자를 항상 정면으로 세운다.
+function updateBillboards() {
+  if (!billboards.length) return;
+  for (const board of billboards) {
+    board.getWorldPosition(billboardWorldPos);
+    board.rotation.y = Math.atan2(
+      camera.position.x - billboardWorldPos.x,
+      camera.position.z - billboardWorldPos.z,
+    );
+  }
 }
 
 function updateTimer(dt) {
@@ -3899,10 +3959,13 @@ function setStationPresentation(station, { label, color, marker, action, disable
   station.markerMesh.material.color.set(marker || station.defaultMarker);
   if (station.labelBoard) {
     station.group.remove(station.labelBoard);
+    const boardIdx = billboards.indexOf(station.labelBoard);
+    if (boardIdx >= 0) billboards.splice(boardIdx, 1);
   }
   station.labelBoard = makeLabelBoard(station.label, color || station.defaultColor, "#fff8e8");
   station.labelBoard.position.set(0, 1.65, 0);
   station.group.add(station.labelBoard);
+  billboards.push(station.labelBoard);
 }
 
 function resetRestaurantStations() {
