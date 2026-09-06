@@ -7010,12 +7010,18 @@ async function joinPvpRoom(code) {
   if (room.guest_id) { showToast("이미 다른 플레이어가 참가한 방입니다."); return; }
   if (room.host_id === state.authUser.id) { showToast("자신이 만든 방에는 참가할 수 없습니다."); return; }
   const nickname = getProfileDisplayName();
-  const { error: updateErr } = await client.from("challenge_rooms")
+  // 위의 guest_id 검사는 조회 시점 기준이라, 두 명이 동시에 들어오면 둘 다 통과한다.
+  // 실제 참가는 "아직 비어 있는 대기 방"일 때만 성립하도록 조건을 update에 함께 건다.
+  const { data: joined, error: updateErr } = await client.from("challenge_rooms")
     .update({ guest_id: state.authUser.id, guest_nickname: nickname })
-    .eq("room_code", code);
-  if (updateErr) { showToast("방 참가에 실패했습니다."); return; }
-  state.pvpRoom = { roomCode: code, isHost: false, opponentId: room.host_id, opponentNickname: room.host_nickname };
-  state.pvpOpponent = { nickname: room.host_nickname, orders: 0, score: 0, done: false };
+    .eq("room_code", code)
+    .eq("status", "waiting")
+    .is("guest_id", null)
+    .select()
+    .maybeSingle();
+  if (updateErr || !joined) { showToast("방 참가에 실패했습니다. 이미 다른 플레이어가 참가했을 수 있습니다."); return; }
+  state.pvpRoom = { roomCode: code, isHost: false, opponentId: joined.host_id, opponentNickname: joined.host_nickname };
+  state.pvpOpponent = { nickname: joined.host_nickname, orders: 0, score: 0, done: false };
   setupPvpChannel(code);
   showPvpLobby();
 }
