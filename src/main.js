@@ -410,7 +410,6 @@ const QUESTS = [
   { id: "stock", name: "재료 상자 정리", pay: 30, summary: "식당 바닥의 상자 3개를 선반으로 옮깁니다." },
   // ── 신규 ────────────────────────────────────────────────
   { id: "sort", name: "재료 선별", pay: 28, summary: "선반에서 상한 재료 2개를 찾아 골라냅니다." },
-  { id: "mop", name: "홀 청소", pay: 22, summary: "식당 바닥의 얼룩 10개를 밟아 닦아냅니다." },
   { id: "water", name: "화분 물 주기", pay: 26, summary: "상점 앞 화분 4개에 물을 80~95% 구간에 맞춥니다." },
 ];
 
@@ -870,7 +869,7 @@ function createQuestArrow() {
 
 const QUEST_STATION_MAP = {
   dishwash: "sink", errand: "counter", stock: "shelf",
-  sort: "shelf", water: "shop", mop: null,
+  sort: "shelf", water: "shop",
 };
 
 function updateQuestArrow() {
@@ -1903,7 +1902,6 @@ function abandonCurrentQuest() {
   }
   clearOrderChallengeTimer();
   clearCrates();
-  clearStains();
   playerCarryMesh.visible = false;
   const previousQuestId = quest.id;
   state.currentQuest = null;
@@ -3182,9 +3180,6 @@ function getTutorialQuestCopy() {
   if (quest.id === "sort") {
     return "오른쪽의 <strong>재료 선반</strong>으로 가서 <strong>E</strong>를 누르세요. 컨베이어 벨트에 올라오는 재료를 보고, 정상이면 <strong>통과(F)</strong>, 상한 재료(💨 표시)면 <strong>불량(G)</strong>을 눌러 선별하세요. 틀리면 목숨이 줄어드니 집중하세요!";
   }
-  if (quest.id === "mop") {
-    return "홀 바닥에 퍼진 <strong>얼룩 10개</strong>를 찾아보세요. 얼룩 가까이 다가가면 상호작용 버튼이 뜹니다. <strong>E</strong>를 눌러 얼룩을 닦아내세요.";
-  }
   if (quest.id === "water") {
     return "오른쪽 앞쪽의 <strong>화분</strong>으로 가서 <strong>E</strong>를 누르세요. 화분을 선택한 뒤 <strong>물 따르기 💧</strong> 버튼을 눌러 물을 주세요. 물이 <strong>넘치거나 완전히 마르지</strong> 않도록 4개 화분을 모두 관리하면 됩니다.";
   }
@@ -3740,7 +3735,6 @@ function animate() {
       updateHelperHamster(dt);
       updateTutorialGuide();
       updateQuestArrow();
-      checkMopProgress();
       updatePvpFrame(dt);
       if (questArrow?.visible) {
         questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
@@ -4168,15 +4162,6 @@ function startQuest(id, options = {}) {
       queue, currentIdx: 0, lives: 3, itemTimer: 100, frameId: null, judging: false,
       detail: "재료 선반에서 상한 재료를 골라내세요",
     };
-  }
-
-  if (id === "mop") {
-    state.currentQuest = {
-      id, name: quest.name, pay: quest.pay,
-      progress: 0, total: 10,
-      detail: "바닥 얼룩을 밟아 닦아내세요. (10개)",
-    };
-    spawnStains();
   }
 
   if (id === "water") {
@@ -4822,82 +4807,6 @@ function clearCrates() {
   worldObjects.crates = [];
 }
 
-function spawnStains() {
-  clearStains();
-  const obstacles = [
-    [-7.8, -5.8], [7.4, -5.4], [4.6, -5.7], [3.8, 0.6],
-    [0, 5.6], [-7.4, 1.8], [-1.8, -1.2], [8, 2.5],
-    [-5.5, 3.25], [-2.2, 3.25], [2.2, 3.25], [5.5, 3.25],
-  ];
-  const isSafe = (x, z) =>
-    obstacles.every(([ox, oz]) => Math.hypot(x - ox, z - oz) > 2.4) &&
-    Math.abs(x) < 6.0 && z > -0.5 && z < 4.8;
-
-  const candidates = [];
-  for (let x = -5.5; x <= 5.5; x += 0.8) {
-    for (let z = 0.0; z <= 4.5; z += 0.8) {
-      if (isSafe(x, z)) candidates.push([x, z]);
-    }
-  }
-  candidates.sort(() => Math.random() - 0.5);
-  const chosen = candidates.slice(0, 10);
-
-  worldObjects.stains = chosen.map(([x, z]) => {
-    const m = mesh(new THREE.CircleGeometry(0.52, 14), mat("#a06820"), [x, 0.015, z]);
-    m.rotation.x = -Math.PI / 2;
-    m.renderOrder = 1;
-    scene.add(m);
-    const stainPos = new THREE.Vector3(x, 0, z);
-    let stainEntry;
-    const interactable = {
-      position: stainPos,
-      radius: 1.6,
-      label: "얼룩 닦기",
-      group: null,
-      markerMesh: null,
-      disabled: false,
-      action: () => mopStain(stainEntry),
-    };
-    stainEntry = { mesh: m, position: stainPos, interactable };
-    interactables.push(interactable);
-    return stainEntry;
-  });
-}
-
-function clearStains() {
-  if (!worldObjects.stains) return;
-  for (const s of worldObjects.stains) {
-    scene.remove(s.mesh);
-    if (s.interactable) {
-      const idx = interactables.indexOf(s.interactable);
-      if (idx >= 0) interactables.splice(idx, 1);
-    }
-  }
-  worldObjects.stains = [];
-}
-
-function mopStain(s) {
-  const quest = state.currentQuest;
-  if (!quest || quest.id !== "mop") return;
-  scene.remove(s.mesh);
-  const sIdx = worldObjects.stains.indexOf(s);
-  if (sIdx >= 0) worldObjects.stains.splice(sIdx, 1);
-  const iIdx = interactables.indexOf(s.interactable);
-  if (iIdx >= 0) interactables.splice(iIdx, 1);
-  quest.progress += 1;
-  playWork();
-  if (quest.progress >= quest.total) {
-    completeQuest();
-  } else {
-    quest.detail = `얼룩 ${quest.progress}/${quest.total}개 제거`;
-    updateHud();
-  }
-}
-
-function checkMopProgress() {
-  // stains are now removed via interaction key — no-op
-}
-
 // ── 재료 선별 (sort) ─────────────────────────────────────
 
 function openSortQuest() {
@@ -5142,7 +5051,6 @@ function completeQuest() {
   state.currentQuest = null;
   state.lastChallengeQuestId = quest.id;
   clearCrates();
-  clearStains();
   if (quest.frameId) { cancelAnimationFrame(quest.frameId); quest.frameId = null; }
   playerCarryMesh.visible = false;
   if (questArrow) questArrow.visible = false;
