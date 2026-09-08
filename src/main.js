@@ -1,4 +1,8 @@
 import * as THREE from "https://unpkg.com/three@0.164.1/build/three.module.js";
+import { EffectComposer } from "https://unpkg.com/three@0.164.1/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "https://unpkg.com/three@0.164.1/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "https://unpkg.com/three@0.164.1/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "https://unpkg.com/three@0.164.1/examples/jsm/postprocessing/OutputPass.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
 
@@ -560,6 +564,8 @@ const boundaries = { minX: -10.5, maxX: 10.5, minZ: -7.5, maxZ: 7.5 };
 let scene;
 let camera;
 let renderer;
+let composer;
+let bloomPass;
 let player;
 let playerCarryMesh;
 let helperHamster;
@@ -694,6 +700,20 @@ function setupScene() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+
+  // 후처리: 톤매핑은 OutputPass가 renderer.toneMapping을 읽어 마지막에 적용한다.
+  // 블룸은 은은하게 — 램프·직사광 하이라이트 정도만 번지도록 threshold를 높게 잡는다.
+  composer = new EffectComposer(renderer);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.addPass(new RenderPass(scene, camera));
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.35, 0.4, 0.82,
+  );
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
 
   const hemi = new THREE.HemisphereLight("#fff5d7", "#4b8079", 2.4);
   scene.add(hemi);
@@ -3769,7 +3789,7 @@ function animate() {
     }
     updateCamera(dt);
     updatePvpStarsOverlayPosition();
-    renderer.render(scene, camera);
+    composer.render();
   } catch (e) {
     console.error("[animate] exception caught:", e);
   }
@@ -8124,6 +8144,7 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function lerpAngle(from, to, amount) {
