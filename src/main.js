@@ -701,16 +701,21 @@ function setupScene() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  // 기존 조명 값(hemi 2.4, sun 2.2, warmLamp 45)은 NoToneMapping 기준으로 잡혀 있었다.
+  // 그 모드는 1.0을 넘는 값을 그냥 흰색으로 잘라버려 밝은 면이 이미 최대치로 눌려 있었는데,
+  // ACES는 그 잘림 없이 부드럽게 압축해 보여주므로 노출을 더 올리면 과다노출이 된다.
+  renderer.toneMappingExposure = 1;
 
   // 후처리: 톤매핑은 OutputPass가 renderer.toneMapping을 읽어 마지막에 적용한다.
   // 블룸은 은은하게 — 램프·직사광 하이라이트 정도만 번지도록 threshold를 높게 잡는다.
+  // threshold를 낮게 잡으면 조명 값이 커서 바닥·벽 같은 넓은 면적까지 걸려 화면 전체가
+  // 부옇게 뜬다.
   composer = new EffectComposer(renderer);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.addPass(new RenderPass(scene, camera));
   bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.35, 0.4, 0.82,
+    0.2, 0.4, 0.92,
   );
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
