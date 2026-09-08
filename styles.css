@@ -1863,10 +1863,107 @@ button {
   border-radius: 8px;
   color: var(--paper);
   background: rgba(36, 31, 33, 0.88);
-  transform: translateX(-50%);
   font-size: 16px;
   font-weight: 800;
   text-align: center;
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  transition: opacity 200ms ease, transform 200ms ease;
+  pointer-events: none;
+}
+
+.toast.toast-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ── juice: 파티클/코인/HUD 연출 ─────────────────────────── */
+
+.juice-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 9050;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.juice-particle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  animation: juice-particle-burst 640ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes juice-particle-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.25);
+    opacity: 0;
+  }
+}
+
+.juice-star {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: var(--juice-star-size, 22px);
+  transform: translate(-50%, -50%) scale(0) rotate(0deg);
+  animation: juice-star-pop 720ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes juice-star-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0) rotate(-20deg);
+    opacity: 0;
+  }
+  40% {
+    transform: translate(calc(-50% + var(--dx) * 0.4), calc(-50% + var(--dy) * 0.4)) scale(1.15) rotate(10deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.7) rotate(18deg);
+    opacity: 0;
+  }
+}
+
+.juice-coin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 20px;
+  transform: translate(-50%, -50%);
+  animation-name: juice-coin-fly;
+  animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35);
+  animation-fill-mode: forwards;
+}
+
+@keyframes juice-coin-fly {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.4);
+    opacity: 0;
+  }
+}
+
+.juice-pop {
+  animation: juice-pop-scale 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes juice-pop-scale {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }
 
 /* ── 챌린지 랭킹 화면 ───────────────────────────────────── */

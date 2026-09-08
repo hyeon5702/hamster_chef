@@ -57,6 +57,7 @@ const dom = {
   challengeLbContent: document.querySelector("#challenge-lb-content"),
   challengeLbExit: document.querySelector("#challenge-lb-exit"),
   toast: document.querySelector("#toast"),
+  juiceLayer: document.querySelector("#juice-layer"),
   multiButton: document.querySelector("#multi-button"),
   skinButton: document.querySelector("#skin-button"),
   pvpOpponentHud: document.querySelector("#pvp-opponent-hud"),
@@ -540,7 +541,8 @@ const state = {
   pvpTripUntil: 0,       // timestamp: 이동 불가 종료 시점
   _pvpTripTimeout: null, // trip 디버프 failsafe setTimeout id
   _pvpStarsTimeout: null, // 별 오버레이 hide setTimeout id
-  pvpCameraShake: 0,     // 남은 카메라 흔들기 시간(ms)
+  // 화면 흔들기 — PvP 넘어뜨리기와 juice 연출(요리 완벽 판정 등)이 공유한다.
+  cameraShake: { remainingMs: 0, durationMs: 650, magnitude: 0.28 },
   pvpSlowUntil: 0,       // timestamp: 이동속도 50% 감소 종료 시점
   pvpBombs: [],          // [{ id, mesh, spark, interactable, expiresAt, fromNickname }]
   pvpInkActive: false,
@@ -570,6 +572,7 @@ let panicBgmAudio;
 let restartMusicOnNextPlay = true;
 let panicBgmActive = false;
 let toastTimer;
+let toastHideTimer;
 let supabase;
 let questArrow = null;
 
@@ -3836,16 +3839,17 @@ function updateCamera(dt) {
   const target = lookAt.clone().add(orbit).add(parallax);
   camera.position.lerp(target, 1 - Math.pow(0.001, dt));
 
-  // PvP 넘어뜨리기 — THREE.js 카메라 흔들기
+  // 화면 흔들기 — THREE.js 카메라를 직접 흔든다. PvP 넘어뜨리기와 juice 연출이 공유.
   // CSS transform 방식은 ① canvas-shake가 3D뷰만 흔들고 오버레이는 제자리라 어색,
   // ② pvp-tilt-wrap에 transform이 걸리면 position:fixed 자식의 containing block이 깨짐.
   // 카메라 자체를 흔들면 project()로 계산되는 별 오버레이 위치도 함께 흔들려 자연스럽다.
-  if (state.pvpCameraShake > 0) {
-    state.pvpCameraShake = Math.max(0, state.pvpCameraShake - dt * 1000);
-    const t = state.pvpCameraShake / 650; // 1(시작)→0(종료)
+  if (state.cameraShake.remainingMs > 0) {
+    const shake = state.cameraShake;
+    shake.remainingMs = Math.max(0, shake.remainingMs - dt * 1000);
+    const t = shake.remainingMs / shake.durationMs; // 1(시작)→0(종료)
     const now = performance.now();
-    camera.position.x += (Math.sin(now * 0.083) * 0.6 + Math.sin(now * 0.19) * 0.4) * t * 0.28;
-    camera.position.y += (Math.cos(now * 0.067) * 0.6 + Math.cos(now * 0.15) * 0.4) * t * 0.14;
+    camera.position.x += (Math.sin(now * 0.083) * 0.6 + Math.sin(now * 0.19) * 0.4) * t * shake.magnitude;
+    camera.position.y += (Math.cos(now * 0.067) * 0.6 + Math.cos(now * 0.15) * 0.4) * t * shake.magnitude * 0.5;
   }
 
   camera.lookAt(lookAt);
@@ -5118,6 +5122,10 @@ function completeQuest() {
   playerCarryMesh.visible = false;
   if (questArrow) questArrow.visible = false;
   playRewardCoin();
+  if (player) {
+    const origin = worldToScreen(player.position.clone().add(new THREE.Vector3(0, 1, 0)));
+    flyCoinToHud(origin.x, origin.y, pay);
+  }
   showToast(`일 완료! ${pay}코인을 받았습니다.${state.gameMode === "challenge" ? " 게시판에서 다음 일을 받아보세요." : ""}`);
   updateHud();
   saveProgress();
@@ -6465,6 +6473,15 @@ function finishCookingMinigame(miniGameScore, resultLabels) {
   };
   state.minigame = null;
   playCook();
+  // 미니게임 라운드 대부분이 완벽 판정이었을 때만 축하 연출을 넣는다.
+  // 매 요리마다 터지면 금방 무뎌지므로 문턱을 높게 잡는다.
+  if (miniGameScore >= 95) {
+    spawnParticleBurst(window.innerWidth / 2, window.innerHeight / 2 - 60, {
+      count: 16,
+      spread: 90,
+    });
+    triggerCameraShake(0.1, 260);
+  }
   closeModal(false, true);
   showToast(`${targetRecipe.name} 완성! ${resultLabels.join(" · ")}`);
   updateHud();
@@ -6556,11 +6573,23 @@ function showScoreboard(dish, passed) {
       <h2>심사 결과</h2>
       <article class="choice-card">
         <h3>${dish.name}</h3>
-        <p style="font-size:2rem;font-weight:700;margin:0.25em 0">${dish.score}점</p>
+        <p id="scoreboard-score-value" style="font-size:2rem;font-weight:700;margin:0.25em 0">0점</p>
         <p>${passed ? "통과! 계속 이어갑니다." : `${dish.requiredScore || getRequiredScore()}점 이상이어야 통과합니다.`}</p>
         <button type="button" data-scoreboard-close="true">${buttonText}</button>
       </article>
     `, { returnTo: passed ? "complete-order" : null });
+
+    const scoreEl = dom.modalContent.querySelector("#scoreboard-score-value");
+    animateCountUp(scoreEl, dish.score, 480, {
+      format: (n) => `${n}점`,
+      onDone: () => {
+        if (!passed || dish.score < 90) return;
+        popElement(scoreEl);
+        const rect = scoreEl.getBoundingClientRect();
+        spawnStarBurst(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      },
+    });
+
     const closeButton = dom.modalContent.querySelector("[data-scoreboard-close]");
     closeButton.addEventListener("click", () => {
       if (passed) {
@@ -6657,6 +6686,7 @@ function completeServiceOrder(dish, playerRank) {
     const reachedLevel = getCareerRestaurantLevel();
     resetServiceDay();
     playRewardCoin();
+    flyCoinToHud(window.innerWidth / 2, window.innerHeight * 0.62, outcome.salePrice);
     updateHud();
     saveProgress();
     const nextMilestone = getCareerNextLevelReputation();
@@ -6712,6 +6742,7 @@ function completeServiceOrder(dish, playerRank) {
   state.selectedIngredients = [];
   state.pendingDish = null;
   playCoin();
+  flyCoinToHud(window.innerWidth / 2, window.innerHeight * 0.62, finalReward);
   updateHud();
   saveProgress();
   showToast(`주문 완료! ${finalReward}코인 · 평판 +${reputationGain} · 다음 주문: ${getTargetRecipe().name}`);
@@ -7478,7 +7509,7 @@ function playTripEffect() {
   //    오버레이가 제자리라 어색하거나, ② position:fixed 자식의 containing block을
   //    깨트리는 부작용이 있다. 카메라를 흔들면 project()로 계산되는
   //    별 오버레이 위치도 자연스럽게 함께 흔들린다.
-  state.pvpCameraShake = 650; // ms — updateCamera에서 차감
+  triggerCameraShake(0.28, 650);
   // 2b. 빨간 비네트 테두리 (transform 없음, box-shadow만)
   dom.pvpTiltWrap.classList.add("pvp-tilt-anim");
   setTimeout(() => dom.pvpTiltWrap.classList.remove("pvp-tilt-anim"), 700);
@@ -7725,7 +7756,7 @@ function clearPvpDebuffs() {
   closeDefuseMinigame();
   removePvpBomb();
   if (state._pvpStarsTimeout) { clearTimeout(state._pvpStarsTimeout); state._pvpStarsTimeout = null; }
-  state.pvpCameraShake = 0;
+  state.cameraShake.remainingMs = 0;
   dom.pvpStarsOverlay?.classList.add("hidden");
   dom.pvpInkOverlay?.classList.add("hidden");
   dom.pvpTiltWrap?.classList.remove("pvp-tilt-anim");
@@ -8115,9 +8146,139 @@ function getIngredientName(id) {
 
 function showToast(message) {
   clearTimeout(toastTimer);
+  clearTimeout(toastHideTimer);
   dom.toast.textContent = message;
   dom.toast.classList.remove("hidden");
-  toastTimer = setTimeout(() => dom.toast.classList.add("hidden"), 2600);
+  // hidden(display:none) 해제 직후 바로 클래스를 더하면 브라우저가 두 변경을
+  // 한 프레임에 합쳐버려 opacity/transform 전환이 스킵된다. 강제 리플로우로 끊는다.
+  void dom.toast.offsetWidth;
+  dom.toast.classList.add("toast-visible");
+  toastTimer = setTimeout(() => {
+    dom.toast.classList.remove("toast-visible");
+    toastHideTimer = setTimeout(() => dom.toast.classList.add("hidden"), 220);
+  }, 2600);
+}
+
+// ── juice 연출 헬퍼 ──────────────────────────────────────
+// 화면 흔들기는 PvP 넘어뜨리기와 공유한다 (updateCamera가 state.cameraShake를 소비).
+function triggerCameraShake(magnitude = 0.28, durationMs = 650) {
+  state.cameraShake.magnitude = magnitude;
+  state.cameraShake.durationMs = durationMs;
+  state.cameraShake.remainingMs = durationMs;
+}
+
+function spawnParticleBurst(x, y, options = {}) {
+  const {
+    count = 12,
+    colors = ["#f5c84b", "#fff8e8", "#ef5b4f"],
+    spread = 70,
+    size = 8,
+    duration = 640,
+  } = options;
+  const layer = dom.juiceLayer;
+  if (!layer) return;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("div");
+    el.className = "juice-particle";
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.7;
+    const dist = spread * (0.55 + Math.random() * 0.55);
+    el.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
+    el.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.style.width = `${size}px`;
+    el.style.height = `${size}px`;
+    el.style.background = colors[i % colors.length];
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), duration);
+  }
+}
+
+const juiceScratchVec = new THREE.Vector3();
+// 3D 월드 좌표를 화면 픽셀 좌표로 투영한다. player 위치 등에서 coin fly를 시작할 때 쓴다.
+function worldToScreen(worldPos) {
+  juiceScratchVec.copy(worldPos);
+  juiceScratchVec.project(camera);
+  return {
+    x: (juiceScratchVec.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-juiceScratchVec.y * 0.5 + 0.5) * window.innerHeight,
+  };
+}
+
+function spawnStarBurst(x, y, options = {}) {
+  const { count = 6, spread = 60, duration = 720 } = options;
+  const layer = dom.juiceLayer;
+  if (!layer) return;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement("div");
+    el.className = "juice-star";
+    el.textContent = "⭐";
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+    const dist = spread * (0.6 + Math.random() * 0.5);
+    el.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
+    el.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
+    el.style.setProperty("--juice-star-size", `${16 + Math.random() * 14}px`);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), duration);
+  }
+}
+
+// 화면 위 (fromX, fromY) 지점에서 코인 HUD 숫자로 코인 아이콘이 날아가는 연출.
+// 도착 시점에 HUD 숫자를 팝 애니메이션으로 강조한다. amount가 0 이하면 아무 일도 하지 않는다.
+function flyCoinToHud(fromX, fromY, amount) {
+  const layer = dom.juiceLayer;
+  if (!layer || !dom.coinCount || amount <= 0) return;
+  const target = dom.coinCount.getBoundingClientRect();
+  const targetX = target.left + target.width / 2;
+  const targetY = target.top + target.height / 2;
+  const coinCount = Math.min(5, 1 + Math.floor(amount / 20));
+  const flightMs = 520;
+  for (let i = 0; i < coinCount; i++) {
+    const el = document.createElement("div");
+    el.className = "juice-coin";
+    el.textContent = "🪙";
+    const jitterX = (Math.random() - 0.5) * 24;
+    const jitterY = (Math.random() - 0.5) * 24;
+    el.style.left = `${fromX + jitterX}px`;
+    el.style.top = `${fromY + jitterY}px`;
+    el.style.setProperty("--dx", `${targetX - fromX - jitterX}px`);
+    el.style.setProperty("--dy", `${targetY - fromY - jitterY}px`);
+    const delay = i * 55;
+    el.style.animationDelay = `${delay}ms`;
+    el.style.animationDuration = `${flightMs}ms`;
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), flightMs + delay + 40);
+  }
+  setTimeout(() => popElement(dom.coinCount), flightMs * 0.6);
+}
+
+function popElement(el) {
+  if (!el) return;
+  el.classList.remove("juice-pop");
+  void el.offsetWidth;
+  el.classList.add("juice-pop");
+  setTimeout(() => el.classList.remove("juice-pop"), 340);
+}
+
+// 0에서 to까지 정수를 durationMs 동안 세는 카운트업. 완료 시 onDone을 부른다.
+function animateCountUp(el, to, durationMs = 500, options = {}) {
+  if (!el) return;
+  const { format = (n) => String(n), onDone } = options;
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / durationMs);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = format(Math.round(to * eased));
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      el.textContent = format(to);
+      onDone?.();
+    }
+  }
+  requestAnimationFrame(step);
 }
 
 function onResize() {
