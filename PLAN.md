@@ -266,15 +266,22 @@ PvP 수신부를 다시 확인한 결과, 상대 캐릭터를 움직이는 데 �
 
 ### F. 배포·잠금·브라우저 테스트 (10h)
 
-- **관리자모드 잠그기**
-  - `src/main.js:1252` Ctrl+Shift+A 핸들러에 코드 확인이 **전혀 없다.** 누구나 열 수 있다.
-  - `src/main.js:219` `ADMIN_CODE = "hamster"` — 게임 제목에서 바로 추측된다.
-  - `src/main.js:579` URL 파라미터 진입.
+- ~~정적 사이트 배포~~ **완료.** Vercel에 배포됨: https://hamster-chef.vercel.app/ · DB는 Supabase.
+  브라우저로 실제 확인함(2026-09-09) — 최신 코드 서빙, 로그인 세션 유지, 고스트 대결
+  전체 흐름(선택→스토리→카운트다운→매치 시작)까지 문제없이 동작, 콘솔 에러 0건.
+  `assets/ghosts/*.json` fetch도 Vercel 라우팅에서 정상.
+- **관리자모드 잠그기** — 남음
+  - `src/main.js:1257` Ctrl+Shift+A 핸들러에 코드 확인이 **전혀 없다.** 누구나 열 수 있다.
+  - `src/main.js:220` `ADMIN_CODE = "hamster"` — 게임 제목에서 바로 추측된다.
+  - `src/main.js:584` URL 파라미터 진입.
   - 참고: anon key가 공개 저장소에 있으므로 관리자 패널을 막아도 콘솔에서 Supabase를 직접 호출하는 조작은 여전히 가능하다. 서버 검증 없이는 완전 차단이 불가능하므로, 랭킹은 "재미용, 검증 없음"으로 표기하는 선에서 정리한다.
-- `index.html:6` `<meta http-equiv="Cache-Control" content="no-store">` 제거 (개발 편의용)
-- 정적 사이트 배포 (GitHub Pages / Vercel 등). 빌드 과정이 없어 그대로 올라간다.
-- 배포 주소를 Supabase Dashboard의 Site URL / Redirect URLs에 추가
-- 다른 브라우저와 노트북에서 실행 확인
+- `index.html:6` `<meta http-equiv="Cache-Control" content="no-store">` 제거 (개발 편의용) — 남음
+- 배포 주소를 Supabase Dashboard의 Site URL / Redirect URLs에 추가 — **확인 필요.**
+  로그인 세션 자체는 이미 이 도메인에서 정상 동작(현우 계정 로그인 유지 확인)하지만,
+  이건 로컬 스토리지 세션이라 Site URL 설정과 무관하게 될 수 있다. 이메일 인증·비밀번호
+  재설정 링크가 실제로 이 Vercel 주소로 오는지는 별도 확인이 필요 — 대시보드에서
+  Authentication → URL Configuration 확인.
+- 다른 브라우저와 노트북에서 실행 확인 — 남음
 
 ### G. 플레이테스트 (10h)
 
