@@ -1315,7 +1315,10 @@ function setupInput() {
         closeModal();
         return;
       }
-      if (state.running && !state.gameOver && !state.minigame?.active && !state.pvpRoom) {
+      // 실제 PvP는 계속 막는다 — 살아있는 상대가 있는 매치를 혼자 일시정지하면
+      // 불공평하다. 고스트는 상대가 스크립트뿐이라 막을 이유가 없다.
+      const pvpBlocksPause = state.pvpRoom && !state.pvpRoom.isGhost;
+      if (state.running && !state.gameOver && !state.minigame?.active && !pvpBlocksPause) {
         event.preventDefault();
         openPauseMenu();
       }
@@ -2992,7 +2995,14 @@ function handlePauseMenuAction(action) {
   }
 
   if (action === "save-exit") {
-    saveAndExitToStartScreen();
+    // 고스트 대결 도중이면 일반 저장·종료 대신 leavePvpRoom()으로 보낸다 —
+    // 재생 타이머·상대 메시·상대 HUD까지 정리해야 해서 saveAndExitToStartScreen()
+    // 하나로는 부족하다(그 함수는 pvpRoom을 모른다).
+    if (state.pvpRoom) {
+      void leavePvpRoom();
+    } else {
+      saveAndExitToStartScreen();
+    }
     return;
   }
 
@@ -7292,12 +7302,23 @@ function updateGhostPlayback() {
   if (!gp || !state.pvpRoom?.isGhost) return;
   const t = performance.now() - gp.startedAt;
 
+  // 녹화는 250ms 간격 샘플이라(실제 PvP의 60ms 브로드캐스트보다 훨씬 성기다)
+  // 그냥 다음 샘플로 점프시키면 그 사이가 뚝뚝 끊겨 보인다. 실시간 네트워크와
+  // 달리 고스트는 전체 경로를 미리 알고 있으니, 두 샘플 사이를 직접
+  // 선형보간해서 매 프레임 정확한 중간 위치를 만들어낸다 — updatePvpFrame의
+  // lerp는 이렇게 이미 연속적인 목표를 한 번 더 부드럽게 다듬는 역할만 한다.
   const positions = gp.recording.positions;
-  while (gp.posIdx < positions.length - 1 && positions[gp.posIdx + 1][0] <= t) gp.posIdx += 1;
-  const [, x, z, ry] = positions[gp.posIdx];
-  opponentTargetX = x;
-  opponentTargetZ = z;
-  opponentTargetRY = ry;
+  while (gp.posIdx < positions.length - 2 && positions[gp.posIdx + 1][0] <= t) gp.posIdx += 1;
+  const a = positions[gp.posIdx];
+  const b = positions[Math.min(gp.posIdx + 1, positions.length - 1)];
+  const span = b[0] - a[0];
+  const frac = span > 0 ? THREE.MathUtils.clamp((t - a[0]) / span, 0, 1) : 0;
+  opponentTargetX = a[1] + (b[1] - a[1]) * frac;
+  opponentTargetZ = a[2] + (b[2] - a[2]) * frac;
+  // 회전은 최단 경로로 보간 — 그냥 선형보간하면 ±π 경계에서 반대로 홱 돈다.
+  let dRY = b[3] - a[3];
+  dRY = ((dRY + Math.PI) % (Math.PI * 2)) - Math.PI;
+  opponentTargetRY = a[3] + dRY * frac;
 
   const orders = gp.recording.orders || [];
   while (gp.orderIdx < orders.length && orders[gp.orderIdx].t <= t) {
@@ -7570,23 +7591,27 @@ async function leavePvpRoom() {
   dom.pvpOpponentHud.classList.add("hidden");
   closeModal(false, true);
 
-  // 게임이 끝난 상태면 시작 화면으로
-  if (state.gameOver || !state.running) {
-    state.running = false;
-    state.gameOver = false;
-    state.paused = false;
-    dom.hud.classList.add("hidden");
-    dom.questTracker.classList.add("hidden");
-    dom.inventoryBar.classList.add("hidden");
-    dom.interactionPrompt.classList.add("hidden");
-    dom.resultScreen.classList.add("hidden");
-    dom.challengeLbScreen.classList.add("hidden");
-    dom.startScreen.classList.remove("hidden");
-    dom.startScreen.classList.add("screen-visible");
-    loadProgress();
-    refreshStartActions();
-    updateHud();
-  }
+  // 시작 화면으로. 기존엔 "게임이 끝난 상태(gameOver 또는 !running)일 때만"
+  // 이 블록을 탔는데, 그 두 조건은 로비 취소·결과 화면 나가기 두 기존
+  // 호출 지점에서 이미 항상 참이었다(로비는 아직 안 시작해서 !running,
+  // 결과 화면은 finishGame이 이미 gameOver를 세팅한 뒤라서). 즉 이 조건은
+  // 사실상 실질적인 분기가 아니었다. 일시정지 메뉴로 매치 도중 나가는
+  // 경로(running이 아직 true)가 새로 생기면서 무조건 실행하게 바꿨다 —
+  // 안 그러면 화면 전환 없이 3D 뷰만 남는다.
+  state.running = false;
+  state.gameOver = false;
+  state.paused = false;
+  dom.hud.classList.add("hidden");
+  dom.questTracker.classList.add("hidden");
+  dom.inventoryBar.classList.add("hidden");
+  dom.interactionPrompt.classList.add("hidden");
+  dom.resultScreen.classList.add("hidden");
+  dom.challengeLbScreen.classList.add("hidden");
+  dom.startScreen.classList.remove("hidden");
+  dom.startScreen.classList.add("screen-visible");
+  loadProgress();
+  refreshStartActions();
+  updateHud();
 }
 
 // ── 상대방 캐릭터 메시 ──────────────────────────────────────────────
