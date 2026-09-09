@@ -6474,13 +6474,15 @@ function finishCookingMinigame(miniGameScore, resultLabels) {
   state.minigame = null;
   playCook();
   // 미니게임 라운드 대부분이 완벽 판정이었을 때만 축하 연출을 넣는다.
-  // 매 요리마다 터지면 금방 무뎌지므로 문턱을 높게 잡는다.
-  if (miniGameScore >= 95) {
+  // 매 요리마다 터지면 금방 무뎌지므로 문턱은 유지하되, 연출 자체는 확실히 크게.
+  if (miniGameScore >= 90) {
     spawnParticleBurst(window.innerWidth / 2, window.innerHeight / 2 - 60, {
-      count: 16,
-      spread: 90,
+      count: 28,
+      spread: 160,
+      size: 12,
+      duration: 760,
     });
-    triggerCameraShake(0.1, 260);
+    triggerCameraShake(0.22, 380);
   }
   closeModal(false, true);
   showToast(`${targetRecipe.name} 완성! ${resultLabels.join(" · ")}`);
@@ -6583,10 +6585,14 @@ function showScoreboard(dish, passed) {
     animateCountUp(scoreEl, dish.score, 480, {
       format: (n) => `${n}점`,
       onDone: () => {
-        if (!passed || dish.score < 90) return;
+        // 점수 상관없이 카운트업이 끝나면 항상 한 번 팝 — 숫자가 그냥 멈추지 않고 착지하는 느낌.
         popElement(scoreEl);
+        if (!passed || dish.score < 90) return;
         const rect = scoreEl.getBoundingClientRect();
-        spawnStarBurst(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        spawnStarBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, {
+          count: 14,
+          spread: 140,
+        });
       },
     });
 
@@ -8189,6 +8195,7 @@ function spawnParticleBurst(x, y, options = {}) {
     el.style.width = `${size}px`;
     el.style.height = `${size}px`;
     el.style.background = colors[i % colors.length];
+    el.style.animationDuration = `${duration}ms`;
     layer.appendChild(el);
     setTimeout(() => el.remove(), duration);
   }
@@ -8206,7 +8213,7 @@ function worldToScreen(worldPos) {
 }
 
 function spawnStarBurst(x, y, options = {}) {
-  const { count = 6, spread = 60, duration = 720 } = options;
+  const { count = 10, spread = 110, duration = 900 } = options;
   const layer = dom.juiceLayer;
   if (!layer) return;
   for (let i = 0; i < count; i++) {
@@ -8217,9 +8224,10 @@ function spawnStarBurst(x, y, options = {}) {
     const dist = spread * (0.6 + Math.random() * 0.5);
     el.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
     el.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
-    el.style.setProperty("--juice-star-size", `${16 + Math.random() * 14}px`);
+    el.style.setProperty("--juice-star-size", `${20 + Math.random() * 18}px`);
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;
+    el.style.animationDuration = `${duration}ms`;
     layer.appendChild(el);
     setTimeout(() => el.remove(), duration);
   }
@@ -8233,25 +8241,25 @@ function flyCoinToHud(fromX, fromY, amount) {
   const target = dom.coinCount.getBoundingClientRect();
   const targetX = target.left + target.width / 2;
   const targetY = target.top + target.height / 2;
-  const coinCount = Math.min(5, 1 + Math.floor(amount / 20));
-  const flightMs = 520;
+  const coinCount = Math.min(9, 2 + Math.floor(amount / 12));
+  const flightMs = 560;
   for (let i = 0; i < coinCount; i++) {
     const el = document.createElement("div");
     el.className = "juice-coin";
     el.textContent = "🪙";
-    const jitterX = (Math.random() - 0.5) * 24;
-    const jitterY = (Math.random() - 0.5) * 24;
+    const jitterX = (Math.random() - 0.5) * 46;
+    const jitterY = (Math.random() - 0.5) * 46;
     el.style.left = `${fromX + jitterX}px`;
     el.style.top = `${fromY + jitterY}px`;
     el.style.setProperty("--dx", `${targetX - fromX - jitterX}px`);
     el.style.setProperty("--dy", `${targetY - fromY - jitterY}px`);
-    const delay = i * 55;
+    const delay = i * 50;
     el.style.animationDelay = `${delay}ms`;
     el.style.animationDuration = `${flightMs}ms`;
     layer.appendChild(el);
     setTimeout(() => el.remove(), flightMs + delay + 40);
   }
-  setTimeout(() => popElement(dom.coinCount), flightMs * 0.6);
+  setTimeout(() => popElement(dom.coinCount), flightMs * 0.55);
 }
 
 function popElement(el) {
