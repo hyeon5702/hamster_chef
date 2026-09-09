@@ -8224,7 +8224,7 @@ function spawnStarBurst(x, y, options = {}) {
     const dist = spread * (0.6 + Math.random() * 0.5);
     el.style.setProperty("--dx", `${Math.cos(angle) * dist}px`);
     el.style.setProperty("--dy", `${Math.sin(angle) * dist}px`);
-    el.style.setProperty("--juice-star-size", `${20 + Math.random() * 18}px`);
+    el.style.setProperty("--juice-star-size", `${40 + Math.random() * 36}px`);
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;
     el.style.animationDuration = `${duration}ms`;

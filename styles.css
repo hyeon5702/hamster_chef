@@ -1938,7 +1938,7 @@ button {
   position: absolute;
   left: 0;
   top: 0;
-  font-size: 28px;
+  font-size: 56px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   transform: translate(-50%, -50%);
   animation-name: juice-coin-fly;
