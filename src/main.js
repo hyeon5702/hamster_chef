@@ -4557,7 +4557,7 @@ function scrubPlate(amount) {
 
   quest.scrubProgress = Math.min(100, (quest.scrubProgress || 0) + amount);
   const meter = dom.modalContent.querySelector(".scrub-meter span");
-  const grime = dom.modalContent.querySelector(".grime-layer");
+  const grime = dom.modalContent.querySelector(".scrub-area .grime-layer");
   if (meter) meter.style.width = `${Math.round(quest.scrubProgress)}%`;
   if (grime) grime.style.opacity = String(Math.max(0, 1 - quest.scrubProgress / 100));
 
