@@ -7379,6 +7379,10 @@ let opponentMesh = null;       // 상대방 캐릭터 Three.js Group
 let opponentCarryMesh = null;  // 상대방 carry 박스 메시
 let opponentNametagEl = null;  // 상대방 이름표 DOM element
 let opponentTargetX = 0, opponentTargetZ = 0, opponentTargetRY = 0;
+// 실제 PvP 지연 보간 버퍼 — [{ t(수신 시각), x, z, ry }]. 고스트는 전체 경로를
+// 미리 알아서(updateGhostPlayback) 이 버퍼를 쓰지 않는다.
+let opponentPosBuffer = [];
+const OPPONENT_INTERP_DELAY_MS = 120; // 이만큼 과거를 그려서 항상 두 샘플 사이를 보간한다
 let pvpPosBroadcastTimer = 0;
 let sabotageMotionRaf = null;  // 현재 실행 중인 방해 모션 RAF id
 const pvpStarsWorldPos = new THREE.Vector3(); // updatePvpStarsOverlayPosition 재사용 벡터
@@ -7437,11 +7441,15 @@ function setupPvpChannel(roomCode) {
     }
   });
 
-  // 상대방 위치 동기화
+  // 상대방 위치 동기화 — 목표를 바로 덮어쓰지 않고 시각과 함께 버퍼에 쌓는다.
+  // updateOpponentInterpolation()이 매 프레임 이 버퍼에서 살짝 과거 시점을
+  // 보간해 opponentTargetX/Z/RY를 계산한다(지연 버퍼 보간, 표준 멀티플레이어
+  // 기법). 네트워크 업데이트 간격이 들쭉날쭉해도 두 샘플 사이를 항상
+  // 매끄럽게 채울 수 있다 — 순간이동 후 lerp로 쫓아가는 방식보다 훨씬 안 끊긴다.
   pvpChannel.on("broadcast", { event: "pos_update" }, ({ payload }) => {
-    opponentTargetX = payload.x;
-    opponentTargetZ = payload.z;
-    opponentTargetRY = payload.ry;
+    opponentPosBuffer.push({ t: performance.now(), x: payload.x, z: payload.z, ry: payload.ry });
+    const cutoff = performance.now() - OPPONENT_INTERP_DELAY_MS * 4;
+    while (opponentPosBuffer.length > 2 && opponentPosBuffer[0].t < cutoff) opponentPosBuffer.shift();
     if (opponentCarryMesh) opponentCarryMesh.visible = !!payload.carry;
     // 메시가 아직 없으면 기본 스킨으로 임시 생성
     if (!opponentMesh && state.running) createOpponentMesh(state._pendingOpponentSkin || "default");
@@ -7582,6 +7590,7 @@ async function leavePvpRoom() {
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
   removeOpponentMesh();
   pvpPosBroadcastTimer = 0;
+  opponentPosBuffer = [];
   state._pendingOpponentSkin = null;
   clearPvpDebuffs();
   state.pvpRoom = null;
@@ -8204,11 +8213,41 @@ async function leavePvpRoomSilent() {
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
   removeOpponentMesh();
   pvpPosBroadcastTimer = 0;
+  opponentPosBuffer = [];
   state._pendingOpponentSkin = null;
   clearPvpDebuffs();
   state.pvpRoom = null;
   state.pvpOpponent = null;
   state.pvpSabotageCooldowns = {};
+}
+
+// 지연 버퍼 보간: opponentPosBuffer에 쌓인 (수신 시각, 위치) 샘플들에서
+// "지금보다 OPPONENT_INTERP_DELAY_MS만큼 과거" 시점을 감싸는 두 샘플을 찾아
+// 그 사이를 선형보간한다. 순간이동한 목표를 lerp로 쫓아가는 방식과 달리,
+// 항상 실제로 있었던 두 지점 "사이"만 보여주므로 네트워크 간격이 들쭉날쭉해도
+// 끊김이 생기지 않는다 — 대신 화면에 보이는 상대 위치가 약간(120ms) 과거다.
+function updateOpponentInterpolation() {
+  if (!state.pvpRoom || state.pvpRoom.isGhost) return;
+  const buf = opponentPosBuffer;
+  if (buf.length === 0) return;
+  if (buf.length === 1) {
+    opponentTargetX = buf[0].x;
+    opponentTargetZ = buf[0].z;
+    opponentTargetRY = buf[0].ry;
+    return;
+  }
+  const renderTime = performance.now() - OPPONENT_INTERP_DELAY_MS;
+  let i = buf.length - 2;
+  while (i > 0 && buf[i].t > renderTime) i -= 1;
+  const a = buf[i];
+  const b = buf[Math.min(i + 1, buf.length - 1)];
+  const span = b.t - a.t;
+  const frac = span > 0 ? THREE.MathUtils.clamp((renderTime - a.t) / span, 0, 1) : 1;
+  opponentTargetX = a.x + (b.x - a.x) * frac;
+  opponentTargetZ = a.z + (b.z - a.z) * frac;
+  let dRY = b.ry - a.ry;
+  dRY = ((dRY + Math.PI) % (Math.PI * 2)) - Math.PI;
+  opponentTargetRY = a.ry + dRY * frac;
 }
 
 function updatePvpFrame(dt) {
@@ -8235,11 +8274,15 @@ function updatePvpFrame(dt) {
     });
   }
 
+  // 실제 PvP 상대 위치는 지연 버퍼 보간으로 계산한다(고스트는 건드리지 않음).
+  updateOpponentInterpolation();
+
   // 상대방 캐릭터 위치 lerp
   // Math.min(1, dt*12)는 프레임이 조금만 튀어도(83ms 이상) lf가 1로 그대로
   // 클램프되어 순간이동처럼 뚝뚝 끊겨 보였다. 지수 감쇠(1-e^-kt)는 절대
   // 1에 도달하지 않아 프레임이 튀어도 부드럽게 따라잡고, 프레임레이트에
-  // 무관하게 같은 체감 속도를 유지한다.
+  // 무관하게 같은 체감 속도를 유지한다. 보간된 목표를 한 번 더 다듬는
+  // 역할이라 지금은 아주 미세한 흔들림만 정리하면 된다.
   if (opponentMesh) {
     const lf = 1 - Math.exp(-10 * dt);
     opponentMesh.position.x += (opponentTargetX - opponentMesh.position.x) * lf;
