@@ -197,7 +197,7 @@ const TRAIT_LABELS = {
 };
 
 const REQUIRED_SCORE = 80;
-const GAME_SECONDS = 480;
+const GAME_SECONDS = 300;
 const DAY_ORDER_COUNT = 3;
 const ORDER_SCORE_STEPS = [75, 80, 85, 90];
 const ORDER_COMPLETION_REWARD = 18;
@@ -3756,7 +3756,8 @@ function restoreActiveDay() {
   const active = state.savedActiveDay;
   if (!active?.orderQueue?.length) return false;
   state.day = active.day || state.day || 1;
-  state.timeLeft = active.timeLeft || GAME_SECONDS;
+  // 제한 시간을 줄이기 전에 저장된 판은 남은 시간이 GAME_SECONDS보다 클 수 있다.
+  state.timeLeft = Math.min(active.timeLeft || GAME_SECONDS, GAME_SECONDS);
   state.orderIndex = active.orderIndex || 0;
   state.dailyEvent = DAILY_EVENTS.find((event) => event.name === active.dailyEvent) || pickDailyEvent();
   state.orderQueue = active.orderQueue
@@ -7144,6 +7145,10 @@ async function joinPvpRoom(code) {
 // (updatePvpFrame의 보간, updateOpponentNametag, updatePvpOpponentHud,
 // applyPvpDebuff, showPvpResult, createOpponentMesh)는 실제 상대와 구분하지
 // 못하고 그대로 동작한다. hard는 아직 녹화가 없어 disabled로 잠가둔다.
+// 주의: 녹화본은 녹화 당시의 GAME_SECONDS 길이를 그대로 갖는다. 제한 시간을
+// 480초 → 300초로 줄이면서 기존 8분 녹화본이 잘리게 됐다. 300초 시점 기준으로
+// 쉬움은 완료 주문 0개(유일한 주문이 396초), 보통은 2개(188점)까지만 재생된다.
+// 셋 다 5분 기준으로 다시 녹화해야 한다.
 const GHOST_PROFILES = [
   {
     id: "easy", difficulty: "쉬움", name: "밤톨 비스트로", skin: "rabbit",
@@ -7152,6 +7157,9 @@ const GHOST_PROFILES = [
       { caption: "“이제 막 개업했어요! 잘 부탁드려요...”" },
       { caption: "손은 아직 서툴지만 열정만큼은 지지 않아요." },
     ],
+    // 8분 녹화본이라 5분 판에서는 주문 0개·0점 — 아무것도 안 하는 상대가 된다.
+    // TODO: 5분 기준으로 재녹화하면 제거
+    disabled: true,
   },
   {
     id: "normal", difficulty: "보통", name: "마담 다람 셰프", skin: "cat",
