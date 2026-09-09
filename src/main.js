@@ -500,6 +500,8 @@ const state = {
   cameraYaw: 0,
   cameraPitch: CAMERA_BASE_PITCH,
   adminEnabled: false,
+  adminGhostRecording: false, // 관리자 토글: 다음 솔로 챌린지 시작 시 고스트 녹화를 켠다
+  ghostRecorder: null,        // { startedAt, positions: [[t,x,z,ry], ...], orders: [{t,orders,score}, ...] }
   dailyEvent: null,
   orderQueue: [],
   orderIndex: 0,
@@ -3282,6 +3284,9 @@ function openAdminPanel() {
       <button type="button" data-admin-action="pass-dish">현재 주문 95점 요리 생성</button>
       <button type="button" data-admin-action="complete-day">오늘 영업 즉시 정산</button>
       <button type="button" data-admin-action="clear-save">저장 초기화</button>
+      <button type="button" data-admin-action="toggle-ghost-recording">
+        🎬 고스트 녹화: ${state.adminGhostRecording ? "ON (다음 솔로 챌린지부터)" : "OFF"}
+      </button>
     </div>
   `);
 
@@ -3332,6 +3337,17 @@ function handleAdminAction(action) {
     refreshStartActions();
     showToast("저장 데이터를 초기화했습니다.");
     openAdminPanel();
+    return;
+  }
+
+  if (action === "toggle-ghost-recording") {
+    state.adminGhostRecording = !state.adminGhostRecording;
+    showToast(
+      state.adminGhostRecording
+        ? "고스트 녹화 ON — 다음 솔로 챌린지 시작부터 기록합니다."
+        : "고스트 녹화 OFF.",
+    );
+    openAdminPanel();
   }
 }
 
@@ -3380,6 +3396,68 @@ function createAdminPassingDish() {
     timingResults: [{ label: "Admin" }],
     score: 95,
   };
+}
+
+// ── 고스트 리플레이 녹화 (관리자 전용) ──────────────────────
+// PLAN.md E 항목: 실제 PvP 판이 아니라 솔로 챌린지 플레이를 녹화해 정적 JSON으로
+// 내보낸다. 재생기는 이 파일의 positions/orders를 opponentTargetX/Z/RY와
+// state.pvpOpponent에 직접 흘려넣는다(가짜 Realtime 채널 없이).
+const GHOST_SAMPLE_INTERVAL_MS = 250;
+let ghostSampleTimer = 0;
+
+function startGhostRecording() {
+  state.ghostRecorder = { startedAt: performance.now(), positions: [], orders: [] };
+  ghostSampleTimer = 0;
+}
+
+function recordGhostFrame(dt) {
+  const rec = state.ghostRecorder;
+  if (!rec || !player) return;
+  ghostSampleTimer += dt * 1000;
+  if (ghostSampleTimer < GHOST_SAMPLE_INTERVAL_MS) return;
+  ghostSampleTimer = 0;
+  const t = Math.round(performance.now() - rec.startedAt);
+  // [t, x, z, ry] — 객체 대신 배열로 저장해 JSON 용량을 줄인다.
+  rec.positions.push([
+    t,
+    Math.round(player.position.x * 100) / 100,
+    Math.round(player.position.z * 100) / 100,
+    Math.round(player.rotation.y * 1000) / 1000,
+  ]);
+}
+
+function recordGhostOrderSnapshot() {
+  const rec = state.ghostRecorder;
+  if (!rec) return;
+  rec.orders.push({
+    t: Math.round(performance.now() - rec.startedAt),
+    orders: state.serviceStats?.completedOrders || 0,
+    score: getChallengeRunScore(),
+  });
+}
+
+// 녹화를 JSON 파일로 다운로드한다. 파일명을 assets/ghosts/<난이도>.json으로
+// 바꿔 저장소에 커밋하면 그대로 고스트 프로필의 recording으로 쓸 수 있다.
+function exportGhostRecording() {
+  const rec = state.ghostRecorder;
+  state.ghostRecorder = null;
+  state.adminGhostRecording = false;
+  if (!rec || rec.positions.length === 0) return;
+
+  const payload = {
+    recordedAt: new Date().toISOString(),
+    durationMs: rec.positions.at(-1)?.[0] || 0,
+    positions: rec.positions,
+    orders: rec.orders,
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ghost-recording-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`고스트 녹화 저장 완료 (${rec.positions.length}개 위치, ${rec.orders.length}개 주문). 다운로드된 파일을 assets/ghosts/에 커밋하세요.`);
 }
 
 async function startGame() {
@@ -3447,7 +3525,14 @@ async function startGame() {
   resetServiceDay();
   resetMusicPlayback();
   startRunningDay();
-  showToast(`챌린지 시작: ${getTargetRecipe().name} · ${getCustomerPreference().name} · 게시판에서 첫 일을 받으세요.`);
+  // PvP 매치는 startChallengeGamePvp()가 이 함수를 내부적으로 호출한다 — 그때는
+  // 호출 시점에 state.pvpRoom이 이미 채워져 있으므로 솔로 실행과 구분할 수 있다.
+  // 고스트는 솔로 판을 녹화한 것이므로 PvP 매치 중엔 녹화를 시작하지 않는다.
+  const recordingNow = state.adminGhostRecording && !state.pvpRoom;
+  if (recordingNow) startGhostRecording();
+  showToast(
+    `${recordingNow ? "🎬 고스트 녹화 중 · " : ""}챌린지 시작: ${getTargetRecipe().name} · ${getCustomerPreference().name} · 게시판에서 첫 일을 받으세요.`,
+  );
 }
 
 function startCareerGame() {
@@ -3766,6 +3851,7 @@ function animate() {
       updateTutorialGuide();
       updateQuestArrow();
       updatePvpFrame(dt);
+      recordGhostFrame(dt);
       if (questArrow?.visible) {
         questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
       }
@@ -6733,6 +6819,7 @@ function completeServiceOrder(dish, playerRank) {
     updateHud();
     saveProgress();
     broadcastPvpScore();
+    recordGhostOrderSnapshot();
     showToast(`주문 ${state.serviceStats?.completedOrders || 0}개 완료! 평판 +${reputationGain} · 다음 주문: ${getTargetRecipe().name}`);
     return;
   }
@@ -6938,6 +7025,7 @@ function finishGame(won, copy) {
       endPvpGame();
       return;
     }
+    if (state.ghostRecorder) exportGhostRecording();
     if (state.authUser && state.serviceStats?.completedOrders) {
       saveChallengeLeaderboardEntry().then(() => void showChallengeLeaderboardScreen());
     } else {
