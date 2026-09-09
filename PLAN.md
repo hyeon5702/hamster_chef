@@ -244,13 +244,15 @@ PvP 수신부를 다시 확인한 결과, 상대 캐릭터를 움직이는 데 �
 
 #### 구현 순서
 
-1. 녹화기 (관리자 토글 + 솔로 챌린지 훅)
-2. 녹화 3종 확보 → `assets/ghosts/*.json` 커밋
-3. 재생기 (`opponentTargetX/Z/RY`, `state.pvpOpponent` 직접 구동)
-4. 방해 스케줄러
-5. `leavePvpRoom`/`leavePvpRoomSilent`/`endPvpGame` 가드 3곳
-6. 고스트 선택 UI + 스토리 슬라이드 (플레이스홀더 이미지로 우선 검증)
-7. 실제 스토리 이미지 교체
+1. ~~녹화기 (관리자 토글 + 솔로 챌린지 훅)~~ **완료** (`7a77efc`)
+2. 녹화 3종 확보 → `assets/ghosts/*.json` 커밋 — **쉬움·보통 완료** (`4697a33`, `c3ccf76`), **어려움 남음**
+3. ~~재생기 (`opponentTargetX/Z/RY`, `state.pvpOpponent` 직접 구동)~~ **완료** (`581844c`)
+4. ~~방해 스케줄러~~ **완료** (`581844c`)
+5. ~~`leavePvpRoom`/`leavePvpRoomSilent` 가드, `pvpOpponent.done` 선세팅으로 `endPvpGame` 대기 우회~~ **완료** (`581844c`)
+6. ~~고스트 선택 UI + 스토리 슬라이드 (플레이스홀더 텍스트로 검증)~~ **완료** (`581844c`) — 어려움은 녹화 없어 선택 UI에서 비활성화 처리
+7. 실제 스토리 이미지 교체 — 남음. `GHOST_PROFILES[i].story[j].image`에 경로만 채우면 됨
+8. 어려움 녹화 후 `assets/ghosts/hard.json` 커밋 + `GHOST_PROFILES`에서 `disabled: true` 제거
+9. 실제 8분짜리 대결을 사람이 플레이해서 확인 — 자동화 브라우저는 탭이 백그라운드로 잡혀 `requestAnimationFrame`이 사실상 멈춰서 프레임 단위 재생·60초 뒤 방해 타이밍을 라이브로 검증하지 못했다. 메뉴 흐름·상태 전환·조사(와/과) 등 rAF에 안 걸리는 부분은 브라우저로 확인 완료
 
 #### 나중에 검토할 것 — 양방향 방해
 
