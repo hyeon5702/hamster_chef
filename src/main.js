@@ -3852,6 +3852,7 @@ function animate() {
       updateQuestArrow();
       updatePvpFrame(dt);
       recordGhostFrame(dt);
+      updateGhostPlayback();
       if (questArrow?.visible) {
         questArrow.position.y = 3.1 + Math.sin(performance.now() * 0.003) * 0.22;
       }
@@ -7067,6 +7068,10 @@ function openMultiChallengeModal() {
       </label>
       <button type="button" id="pvp-join-confirm" class="primary-action" style="margin-top:8px">참가</button>
     </div>
+    <div class="mode-actions" style="margin-top:12px">
+      <button type="button" id="ghost-duel-btn" class="primary-action secondary-action">🎬 고스트 대결</button>
+    </div>
+    <p style="font-size:0.85em;color:#888;margin-top:6px">상대가 없어도 미리 녹화된 라이벌과 바로 붙어볼 수 있어요.</p>
   `);
   dom.modalContent.querySelector("#pvp-create-btn").addEventListener("click", () => void createPvpRoom());
   dom.modalContent.querySelector("#pvp-join-btn").addEventListener("click", () => {
@@ -7077,6 +7082,7 @@ function openMultiChallengeModal() {
     if (code.length !== 6) { showToast("방 코드는 6자리입니다."); return; }
     void joinPvpRoom(code);
   });
+  dom.modalContent.querySelector("#ghost-duel-btn").addEventListener("click", openGhostSelectModal);
 }
 
 async function createPvpRoom() {
@@ -7120,6 +7126,227 @@ async function joinPvpRoom(code) {
   state.pvpOpponent = { nickname: joined.host_nickname, orders: 0, score: 0, done: false };
   setupPvpChannel(code);
   showPvpLobby();
+}
+
+// ── 고스트 리플레이 ──────────────────────────────────────
+// PLAN.md E 항목. 실제 Realtime 채널을 만들지 않는다 — 재생기가
+// opponentTargetX/Z/RY와 state.pvpOpponent를 직접 채워 넣으면, PvP 수신 코드
+// (updatePvpFrame의 보간, updateOpponentNametag, updatePvpOpponentHud,
+// applyPvpDebuff, showPvpResult, createOpponentMesh)는 실제 상대와 구분하지
+// 못하고 그대로 동작한다. hard는 아직 녹화가 없어 disabled로 잠가둔다.
+const GHOST_PROFILES = [
+  {
+    id: "easy", difficulty: "쉬움", name: "밤톨 비스트로", skin: "rabbit",
+    recording: "./assets/ghosts/easy.json",
+    story: [
+      { caption: "“이제 막 개업했어요! 잘 부탁드려요...”" },
+      { caption: "손은 아직 서툴지만 열정만큼은 지지 않아요." },
+    ],
+  },
+  {
+    id: "normal", difficulty: "보통", name: "마담 다람 셰프", skin: "cat",
+    recording: "./assets/ghosts/normal.json",
+    story: [
+      { caption: "“꾸준함이 제 무기예요.”" },
+      { caption: "동네에서 몇 년째 상위권을 지키는 실력자." },
+    ],
+  },
+  {
+    id: "hard", difficulty: "어려움", name: "크림 수프 연구회", skin: "robot",
+    recording: "./assets/ghosts/hard.json",
+    story: [
+      { caption: "“오차는 0.01초도 허용하지 않습니다.”" },
+      { caption: "대회 우승 후보. 아직 진 적이 없다." },
+    ],
+    disabled: true, // TODO: assets/ghosts/hard.json 녹화되면 제거
+  },
+];
+
+let ghostPlaybackState = null; // { recording, startedAt, posIdx, orderIdx }
+let ghostSabotageTimers = [];
+let lastGhostProfile = null;   // 결과 화면 "다시 도전"이 재사용
+
+function openGhostSelectModal() {
+  const cards = GHOST_PROFILES.map((profile) => {
+    const skin = SKINS.find((s) => s.id === profile.skin);
+    return `
+      <article class="choice-card ${profile.disabled ? "muted-record" : ""}">
+        <h3>${skin?.emoji || "🐹"} ${profile.name}</h3>
+        <p><strong>${profile.difficulty}</strong></p>
+        <button type="button" data-ghost-id="${profile.id}" ${profile.disabled ? "disabled" : ""}>
+          ${profile.disabled ? "녹화 준비 중" : "대결 신청"}
+        </button>
+      </article>
+    `;
+  }).join("");
+
+  openModal(`
+    <h2>🎬 고스트 대결</h2>
+    <p>미리 녹화된 라이벌과 1:1로 겨룹니다. 상대는 방해할 수 없고, 상대만 정해진 순간에 방해를 걸어옵니다.</p>
+    <div class="grid-list">${cards}</div>
+  `);
+
+  dom.modalContent.querySelectorAll("[data-ghost-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const profile = GHOST_PROFILES.find((g) => g.id === btn.dataset.ghostId);
+      if (profile) openGhostStoryModal(profile);
+    });
+  });
+}
+
+function openGhostStoryModal(profile) {
+  let slideIndex = 0;
+
+  const renderSlide = () => {
+    const slide = profile.story[slideIndex];
+    const isLast = slideIndex >= profile.story.length - 1;
+    // 이미지는 아직 준비 전이라 캡션 텍스트만 카드로 보여준다.
+    // profile.story[i].image가 채워지면 여기에 <img> 한 줄만 추가하면 된다.
+    openModal(`
+      <h2>${profile.name}</h2>
+      <article class="choice-card">
+        <p style="font-size:1.2rem;line-height:1.7;text-align:center;margin:0.5em 0">${slide.caption}</p>
+      </article>
+      <div class="mode-actions" style="margin-top:16px">
+        <button type="button" id="ghost-story-next" class="primary-action">${isLast ? "대결 시작" : "다음"}</button>
+        <button type="button" id="ghost-story-skip" class="primary-action secondary-action">건너뛰기</button>
+      </div>
+    `);
+    dom.modalContent.querySelector("#ghost-story-next").addEventListener("click", () => {
+      if (isLast) {
+        void startGhostDuel(profile);
+      } else {
+        slideIndex += 1;
+        renderSlide();
+      }
+    });
+    dom.modalContent.querySelector("#ghost-story-skip").addEventListener("click", () => void startGhostDuel(profile));
+  };
+
+  renderSlide();
+}
+
+async function startGhostDuel(profile) {
+  closeModal(false, true);
+  lastGhostProfile = profile;
+  showToast("녹화 불러오는 중...");
+
+  let recording;
+  try {
+    const res = await fetch(profile.recording);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    recording = await res.json();
+  } catch (error) {
+    console.error(error);
+    showToast("고스트 녹화를 불러오지 못했습니다.");
+    return;
+  }
+  if (!recording.positions?.length) {
+    showToast("이 고스트는 아직 녹화가 없습니다.");
+    return;
+  }
+
+  state.pvpRoom = { roomCode: null, isHost: true, isGhost: true, opponentId: null, opponentNickname: profile.name };
+  // done을 처음부터 true로 둔다 — 결과가 이미 정해진 녹화라 실제 상대처럼
+  // endPvpGame()이 5초씩 기다릴 이유가 없다.
+  state.pvpOpponent = { nickname: profile.name, orders: 0, score: 0, done: true };
+  startGhostCountdown(profile, recording);
+}
+
+function startGhostCountdown(profile, recording) {
+  let count = 3;
+  const tick = () => {
+    if (count > 0) {
+      showToast(`${count}...`);
+      count -= 1;
+      setTimeout(tick, 1000);
+    } else {
+      void startGhostChallengeGame(profile, recording);
+    }
+  };
+  tick();
+}
+
+async function startGhostChallengeGame(profile, recording) {
+  const savedRoom = state.pvpRoom;
+  await startGame();
+  state.pvpRoom = savedRoom;
+  dom.pvpOpponentHud.classList.remove("hidden");
+  updatePvpOpponentHud();
+  // 방해 패널은 계속 숨겨둔다 — 단방향 설계라 플레이어는 고스트를 방해할 수 없다.
+  createOpponentMesh(profile.skin);
+  beginGhostPlayback(recording);
+  beginGhostSabotageSchedule(profile);
+  showToast(`🎬 ${profile.name}${withParticle(profile.name, "와", "과")}의 대결 시작!`);
+}
+
+function beginGhostPlayback(recording) {
+  ghostPlaybackState = { recording, startedAt: performance.now(), posIdx: 0, orderIdx: 0 };
+}
+
+// animate()의 게이트 블록에서 매 프레임 recordGhostFrame(dt) 옆에서 호출된다.
+// updatePvpFrame의 opponentMesh 보간이 opponentTargetX/Z/RY를 그대로 읽어가므로
+// 여기서는 그 변수만 채우면 된다 — updatePvpFrame 자체는 손대지 않는다.
+function updateGhostPlayback() {
+  const gp = ghostPlaybackState;
+  if (!gp || !state.pvpRoom?.isGhost) return;
+  const t = performance.now() - gp.startedAt;
+
+  const positions = gp.recording.positions;
+  while (gp.posIdx < positions.length - 1 && positions[gp.posIdx + 1][0] <= t) gp.posIdx += 1;
+  const [, x, z, ry] = positions[gp.posIdx];
+  opponentTargetX = x;
+  opponentTargetZ = z;
+  opponentTargetRY = ry;
+
+  const orders = gp.recording.orders || [];
+  while (gp.orderIdx < orders.length && orders[gp.orderIdx].t <= t) {
+    state.pvpOpponent.orders = orders[gp.orderIdx].orders;
+    state.pvpOpponent.score = orders[gp.orderIdx].score;
+    updatePvpOpponentHud();
+    gp.orderIdx += 1;
+  }
+}
+
+// 난이도별로 방해 빈도를 다르게 한다 — 값이 작을수록 자주 온다.
+const GHOST_INTERVAL_SCALE = { easy: 1.3, normal: 1, hard: 0.75 };
+const GHOST_SABOTAGE_TYPES = ["trip", "ink", "bomb"];
+
+function beginGhostSabotageSchedule(profile) {
+  stopGhostSabotageSchedule();
+  scheduleNextGhostSabotage(profile, 60000 + Math.random() * 10000); // 첫 방해는 60초쯤 뒤
+}
+
+function scheduleNextGhostSabotage(profile, delayMs) {
+  const timer = setTimeout(() => fireGhostSabotage(profile), delayMs);
+  ghostSabotageTimers.push(timer);
+}
+
+function fireGhostSabotage(profile) {
+  if (!state.pvpRoom?.isGhost || !state.running || state.gameOver) return;
+  // 미니게임·일시정지 중엔 억울하게 맞는다. 사람이 상대면 그러려니 하지만
+  // 스크립트가 상대면 그냥 짜증나므로 잠깐 미뤘다가 다시 시도한다.
+  if (state.modalOpen || state.paused) {
+    scheduleNextGhostSabotage(profile, 2000);
+    return;
+  }
+  const type = GHOST_SABOTAGE_TYPES[Math.floor(Math.random() * GHOST_SABOTAGE_TYPES.length)];
+  applyPvpDebuff(type, profile.name);
+
+  const scale = GHOST_INTERVAL_SCALE[profile.id] ?? 1;
+  const base = PVP_SABOTAGE_COOLDOWNS_MS[type] ?? 40000;
+  const jitter = (Math.random() - 0.5) * 8000;
+  scheduleNextGhostSabotage(profile, base * scale + jitter);
+}
+
+function stopGhostSabotageSchedule() {
+  ghostSabotageTimers.forEach((timer) => clearTimeout(timer));
+  ghostSabotageTimers = [];
+}
+
+function stopGhostDuel() {
+  ghostPlaybackState = null;
+  stopGhostSabotageSchedule();
 }
 
 let pvpChannel = null;
@@ -7316,7 +7543,8 @@ async function startChallengeGamePvp() {
 async function leavePvpRoom() {
   const client = getSupabase();
   const room = state.pvpRoom;
-  if (client && room) {
+  // 고스트 대결은 진짜 방이 없다 — challenge_rooms를 건드리지 않는다.
+  if (client && room && !room.isGhost) {
     if (room.isHost) {
       await client.from("challenge_rooms").delete().eq("room_code", room.roomCode);
     } else {
@@ -7325,6 +7553,7 @@ async function leavePvpRoom() {
         .eq("room_code", room.roomCode);
     }
   }
+  if (room?.isGhost) stopGhostDuel();
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
   removeOpponentMesh();
   pvpPosBroadcastTimer = 0;
@@ -7874,6 +8103,9 @@ function endPvpGame() {
 
 function showPvpResult() {
   if (state.pvpDoneWaitTimer) { clearTimeout(state.pvpDoneWaitTimer); state.pvpDoneWaitTimer = null; }
+  // leavePvpRoomSilent()가 이 함수 끝에서 state.pvpRoom을 지우므로,
+  // "다시 도전" 버튼이 나중에 눌릴 때 쓸 수 있게 지금 미리 붙잡아둔다.
+  const isGhostMatch = Boolean(state.pvpRoom?.isGhost);
   const myScore = getChallengeRunScore();
   const myOrders = state.serviceStats?.completedOrders || 0;
   const oppScore = state.pvpOpponent?.score ?? 0;
@@ -7909,7 +8141,12 @@ function showPvpResult() {
   `, { stopMusic: true });
 
   dom.modalContent.querySelector("#pvp-rematch-btn").addEventListener("click", () => {
-    closeModal(); showPvpLobby();
+    closeModal();
+    if (isGhostMatch && lastGhostProfile) {
+      void startGhostDuel(lastGhostProfile);
+    } else {
+      showPvpLobby();
+    }
   });
   dom.modalContent.querySelector("#pvp-exit-btn").addEventListener("click", () => void leavePvpRoom());
 
@@ -7924,9 +8161,10 @@ async function leavePvpRoomSilent() {
   const client = getSupabase();
   const room = state.pvpRoom;
   if (!room) return;
-  if (client && room.isHost) {
+  if (client && room.isHost && !room.isGhost) {
     await client.from("challenge_rooms").update({ status: "done" }).eq("room_code", room.roomCode);
   }
+  if (room.isGhost) stopGhostDuel();
   if (pvpChannel) { client?.removeChannel(pvpChannel); pvpChannel = null; }
   removeOpponentMesh();
   pvpPosBroadcastTimer = 0;
@@ -8200,6 +8438,14 @@ function formatClearTime(seconds) {
   const min = Math.floor(safe / 60);
   const sec = safe % 60;
   return `${min}분 ${String(sec).padStart(2, "0")}초`;
+}
+
+// 한글 단어 뒤에 받침 유무에 맞는 조사를 붙인다. withWordName("비스트로", "와", "과") → "와".
+function withParticle(word, noBatchimForm, batchimForm) {
+  const lastChar = String(word).trim().at(-1) || "";
+  const code = lastChar.charCodeAt(0) - 0xac00;
+  if (code < 0 || code > 11171) return noBatchimForm; // 한글 완성형 범위 밖이면 기본값
+  return code % 28 === 0 ? noBatchimForm : batchimForm;
 }
 
 function formatVolumePercent(value) {
