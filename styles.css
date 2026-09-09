@@ -24,9 +24,19 @@ body {
   color: var(--ink);
   font-size: 18px;
   font-family:
-    "Gothic A1", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Jua", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   background: #7bc2bc;
+  /* Jua는 굵기가 400 하나뿐인데 이 파일 곳곳에 font-weight:850~950이 박혀
+     있어, 그 값을 요청할 때마다 브라우저가 없는 굵기를 가짜로 두껍게
+     합성해서 그렸다(fake bold). Windows의 합성 볼드 렌더링이 특히 뭉개져
+     보인다. font-synthesis: none으로 그 합성 자체를 꺼서, 어떤
+     font-weight를 요청하든 Jua 원래 굵기로만 그리게 한다 — 굵기 지정
+     58곳은 하나도 안 건드려도 된다. */
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 button {
