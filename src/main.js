@@ -7308,13 +7308,21 @@ function updateGhostPlayback() {
   }
 }
 
-// 난이도별로 방해 빈도를 다르게 한다 — 값이 작을수록 자주 온다.
-const GHOST_INTERVAL_SCALE = { easy: 1.3, normal: 1, hard: 0.75 };
+// 난이도별 방해 간격(고정값) — PVP 쿨타임을 배율로 늘리는 대신 난이도마다
+// 직접 원하는 체감 간격을 박아둔다. 쉬움은 1분 30초로 넉넉하게, 첫 방해도
+// 같은 간격만큼 기다린다(쉬움은 시작하자마자부터 여유롭게 느껴져야 한다).
+const GHOST_SABOTAGE_INTERVAL_MS = { easy: 90000, normal: 42000, hard: 30000 };
 const GHOST_SABOTAGE_TYPES = ["trip", "ink", "bomb"];
 
 function beginGhostSabotageSchedule(profile) {
   stopGhostSabotageSchedule();
-  scheduleNextGhostSabotage(profile, 60000 + Math.random() * 10000); // 첫 방해는 60초쯤 뒤
+  scheduleNextGhostSabotage(profile, getGhostSabotageInterval(profile));
+}
+
+function getGhostSabotageInterval(profile) {
+  const base = GHOST_SABOTAGE_INTERVAL_MS[profile.id] ?? 45000;
+  const jitter = (Math.random() - 0.5) * Math.min(10000, base * 0.15);
+  return base + jitter;
 }
 
 function scheduleNextGhostSabotage(profile, delayMs) {
@@ -7332,11 +7340,7 @@ function fireGhostSabotage(profile) {
   }
   const type = GHOST_SABOTAGE_TYPES[Math.floor(Math.random() * GHOST_SABOTAGE_TYPES.length)];
   applyPvpDebuff(type, profile.name);
-
-  const scale = GHOST_INTERVAL_SCALE[profile.id] ?? 1;
-  const base = PVP_SABOTAGE_COOLDOWNS_MS[type] ?? 40000;
-  const jitter = (Math.random() - 0.5) * 8000;
-  scheduleNextGhostSabotage(profile, base * scale + jitter);
+  scheduleNextGhostSabotage(profile, getGhostSabotageInterval(profile));
 }
 
 function stopGhostSabotageSchedule() {
@@ -7807,13 +7811,20 @@ function applyPvpDebuff(type, fromNickname) {
       if (player) player.rotation.z = 0;
     }, PVP_TRIP_DURATION_MS + 100);
     showToast(`😵 ${fromNickname}이(가) 넘어뜨렸습니다! 5초간 이동 불가`);
-    playTripEffect();
+    playTripEffect(); // 내부에서 카메라 흔들기(스턴 강도, 0.28/650) 처리
   } else if (type === "ink") {
     showToast(`🖤 ${fromNickname}이(가) 먹물을 뿌렸습니다!`);
     playInkEffect();
+    // ink는 전체 화면 오버레이라 트립만큼은 아니어도 충분히 눈에 띄지만,
+    // 방해가 "왔다"는 물리적 신호는 통일해두는 게 좋아 가볍게 흔든다.
+    triggerCameraShake(0.14, 400);
   } else if (type === "bomb") {
     showToast(`💣 ${fromNickname}이(가) 폭탄을 던졌습니다! 30초 안에 해제하세요!`);
     spawnPvpBomb(fromNickname);
+    // bomb은 화면 전체를 덮는 연출이 없어(3D 공간에 조용히 생성) 토스트만으로는
+    // 다른 게임 토스트(주문 완료 등)에 묻히기 쉽다. 가벼운 흔들림으로 "방해가
+    // 들어왔다"는 걸 트립·ink와 동일하게 체감시킨다.
+    triggerCameraShake(0.14, 400);
   }
 }
 
@@ -8184,9 +8195,9 @@ function updatePvpFrame(dt) {
     broadcastPvpScore();
   }
 
-  // 위치 브로드캐스트 (~80ms마다)
+  // 위치 브로드캐스트 (~60ms마다) — 간격을 좁혀 보간할 거리 자체를 줄인다.
   pvpPosBroadcastTimer += dt * 1000;
-  if (pvpPosBroadcastTimer >= 80 && player && pvpChannel) {
+  if (pvpPosBroadcastTimer >= 60 && player && pvpChannel) {
     pvpPosBroadcastTimer = 0;
     pvpChannel.send({
       type: "broadcast", event: "pos_update",
@@ -8200,8 +8211,12 @@ function updatePvpFrame(dt) {
   }
 
   // 상대방 캐릭터 위치 lerp
+  // Math.min(1, dt*12)는 프레임이 조금만 튀어도(83ms 이상) lf가 1로 그대로
+  // 클램프되어 순간이동처럼 뚝뚝 끊겨 보였다. 지수 감쇠(1-e^-kt)는 절대
+  // 1에 도달하지 않아 프레임이 튀어도 부드럽게 따라잡고, 프레임레이트에
+  // 무관하게 같은 체감 속도를 유지한다.
   if (opponentMesh) {
-    const lf = Math.min(1, dt * 12);
+    const lf = 1 - Math.exp(-10 * dt);
     opponentMesh.position.x += (opponentTargetX - opponentMesh.position.x) * lf;
     opponentMesh.position.z += (opponentTargetZ - opponentMesh.position.z) * lf;
     // 회전 최단 경로 보간
