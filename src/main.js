@@ -520,9 +520,14 @@ function spendCookies(amount) {
 
 // 챌린지/아케이드/PvP 판이 끝날 때마다 호출한다. 승리 보너스는 진짜 사람과
 // 겨루는 PvP에서만 준다 — 고스트는 상대가 녹화본이라 대상에서 뺀다.
+// finishGame()/showPvpResult()가 지급 직후 여기 값을 읽어 결과 화면에 같이
+// 띄운다. 토스트 하나만 믿으면 결과 화면이 바로 덮어써서 놓치기 쉽다.
+let lastCookiesEarned = 0;
+
 function awardMatchCookies({ pvpWin = false } = {}) {
   const orders = state.serviceStats?.completedOrders || 0;
   const amount = COOKIE_MATCH_BASE + orders * COOKIE_PER_ORDER + (pvpWin ? COOKIE_PVP_WIN_BONUS : 0);
+  lastCookiesEarned = amount;
   addCookies(amount);
   showToast(`🍪 쿠키 +${amount}`);
 }
@@ -2858,6 +2863,7 @@ async function showChallengeLeaderboardScreen() {
       `<span class="challenge-lb-stat">완료 ${stats.completedOrders}개</span>`,
       `<span class="challenge-lb-stat">누적 ${totalScore}점</span>`,
       `<span class="challenge-lb-stat">최고 ${stats.bestScore}점</span>`,
+      `<span class="challenge-lb-stat">🍪 +${lastCookiesEarned} (보유 ${getCookies()})</span>`,
     ].join("");
   }
 
@@ -8247,6 +8253,7 @@ function showPvpResult() {
         <span class="pvp-result-name">🐹 ${oppName}</span>
         <span class="pvp-result-stat">${oppOrders}주문 · <strong>${oppScore}점</strong></span>
       </div>
+      <p style="margin:14px 0 0;opacity:.7;font-size:14px">🍪 +${lastCookiesEarned} (보유 ${getCookies()})</p>
       <div class="mode-actions" style="margin-top:24px">
         <button type="button" id="pvp-rematch-btn" class="primary-action">다시 도전</button>
         <button type="button" id="pvp-exit-btn" class="primary-action secondary-action">나가기</button>
