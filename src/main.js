@@ -3183,8 +3183,11 @@ function updateTutorialGuide() {
   if (!state.tutorialMode || !player) return;
   if (!state.tutorialStartPosition) state.tutorialStartPosition = player.position.clone();
 
-  if (state.tutorialStep === 0 && player.position.distanceTo(state.tutorialStartPosition) > 1.1) {
-    setTutorialStep(1);
+  if (state.tutorialStep === 0) {
+    if (player.position.distanceTo(state.tutorialStartPosition) > 1.1) state.tutorialHasMoved = true;
+    if (keys.has("shift") && (keys.has("w") || keys.has("a") || keys.has("s") || keys.has("d"))) state.tutorialHasRun = true;
+    if (keys.has("arrowleft") || keys.has("arrowright")) state.tutorialHasLooked = true;
+    if (state.tutorialHasMoved && state.tutorialHasRun && state.tutorialHasLooked) setTutorialStep(1);
   }
 
   if (state.tutorialStep === 1 && state.currentQuest) {
@@ -3235,7 +3238,7 @@ function getTutorialStepContent() {
   if (state.tutorialStep === 0) {
     return {
       title: "먼저 움직여보기",
-      copy: "<strong>WASD</strong>로 햄스터를 움직여보세요. <strong>Shift</strong>를 누르면 더 빠르게 달립니다. <strong>방향키</strong>로는 카메라를 돌려 볼 수 있습니다.",
+      copy: "<strong>WASD</strong>로 움직이고, <strong>Shift</strong>를 눌러 달려보고, <strong>방향키</strong>로 카메라도 돌려보세요. 셋 다 해보면 다음으로 넘어갑니다.",
     };
   }
 
@@ -3721,6 +3724,9 @@ function startTutorialGame() {
   state.tutorialStep = 0;
   state.tutorialLastRenderedStep = -1;
   state.tutorialStartPosition = null;
+  state.tutorialHasMoved = false;
+  state.tutorialHasRun = false;
+  state.tutorialHasLooked = false;
   state.coins = 35;
   state.inventory = {};
   state.recipeRecords = {};
@@ -4169,7 +4175,9 @@ function resetRestaurantStations() {
 }
 
 function applyChallengeStationState() {
-  if (state.gameMode !== "challenge" || state.tutorialMode) return;
+  // 챌린지(+아케이드/PvP)와 튜토리얼 둘 다 업그레이드 개념이 없다. 성장
+  // 모드에서만 쓰는 기능이라 여기선 책상 자체를 감춘다.
+  if (state.gameMode !== "challenge" && state.gameMode !== "tutorial") return;
   [stations.upgrade].forEach((station) => {
     if (!station) return;
     station.disabled = true;
