@@ -7151,7 +7151,7 @@ async function joinPvpRoom(code) {
 // 셋 다 5분 기준으로 다시 녹화해야 한다.
 const GHOST_PROFILES = [
   {
-    id: "easy", difficulty: "쉬움", name: "초급 요리사", skin: "rabbit",
+    id: "easy", difficulty: "쉬움", name: "백존원 - 골목식당의 왕", skin: "rabbit",
     recording: "./assets/ghosts/easy.json",
     story: [
       { caption: "조보아씨 내려와바", image: "./assets/ghost-story/easy-1.png" },
@@ -7162,7 +7162,7 @@ const GHOST_PROFILES = [
     disabled: true,
   },
   {
-    id: "normal", difficulty: "보통", name: "중급 요리사", skin: "cat",
+    id: "normal", difficulty: "보통", name: "안섬재 - 모수의 왕", skin: "cat",
     recording: "./assets/ghosts/normal.json",
     story: [
       { caption: "오늘 급식 메뉴는 뭔가요?", image: "./assets/ghost-story/normal-1.png" },
@@ -7170,7 +7170,7 @@ const GHOST_PROFILES = [
     ],
   },
   {
-    id: "hard", difficulty: "어려움", name: "고급 요리사", skin: "robot",
+    id: "hard", difficulty: "어려움", name: "최감록 - 조림의 왕", skin: "robot",
     recording: "./assets/ghosts/hard.json",
     story: [
       { caption: "나야 들기름", image: "./assets/ghost-story/hard-1.png" },
