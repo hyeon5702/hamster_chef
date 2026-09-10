@@ -7151,30 +7151,30 @@ async function joinPvpRoom(code) {
 // 셋 다 5분 기준으로 다시 녹화해야 한다.
 const GHOST_PROFILES = [
   {
-    id: "easy", difficulty: "쉬움", name: "밤톨 비스트로", skin: "rabbit",
+    id: "easy", difficulty: "쉬움", name: "백존원", skin: "rabbit",
     recording: "./assets/ghosts/easy.json",
     story: [
-      { caption: "“이제 막 개업했어요! 잘 부탁드려요...”" },
-      { caption: "손은 아직 서툴지만 열정만큼은 지지 않아요." },
+      { caption: "조보아씨 내려와바", image: "./assets/ghost-story/easy-1.png" },
+      { caption: "어어얽어.. 뭐야 이거 빠스 아니여?", image: "./assets/ghost-story/easy-2.png" },
     ],
     // 8분 녹화본이라 5분 판에서는 주문 0개·0점 — 아무것도 안 하는 상대가 된다.
     // TODO: 5분 기준으로 재녹화하면 제거
     disabled: true,
   },
   {
-    id: "normal", difficulty: "보통", name: "마담 다람 셰프", skin: "cat",
+    id: "normal", difficulty: "보통", name: "안섬재", skin: "cat",
     recording: "./assets/ghosts/normal.json",
     story: [
-      { caption: "“꾸준함이 제 무기예요.”" },
-      { caption: "동네에서 몇 년째 상위권을 지키는 실력자." },
+      { caption: "오늘 급식 메뉴는 뭔가요?", image: "./assets/ghost-story/normal-1.png" },
+      { caption: "이 고기는 이븐하게 익지 않았어요", image: "./assets/ghost-story/normal-2.png" },
     ],
   },
   {
-    id: "hard", difficulty: "어려움", name: "크림 수프 연구회", skin: "robot",
+    id: "hard", difficulty: "어려움", name: "최감록", skin: "robot",
     recording: "./assets/ghosts/hard.json",
     story: [
-      { caption: "“오차는 0.01초도 허용하지 않습니다.”" },
-      { caption: "대회 우승 후보. 아직 진 적이 없다." },
+      { caption: "나야 들기름", image: "./assets/ghost-story/hard-1.png" },
+      { caption: "자 지나갑니다 화이팅!", image: "./assets/ghost-story/hard-2.png" },
     ],
     disabled: true, // TODO: assets/ghosts/hard.json 녹화되면 제거
   },
@@ -7218,12 +7218,15 @@ function openGhostStoryModal(profile) {
   const renderSlide = () => {
     const slide = profile.story[slideIndex];
     const isLast = slideIndex >= profile.story.length - 1;
-    // 이미지는 아직 준비 전이라 캡션 텍스트만 카드로 보여준다.
-    // profile.story[i].image가 채워지면 여기에 <img> 한 줄만 추가하면 된다.
+    // 대사가 이미지 안에 이미 박혀 있는 컷이라, 이미지가 있으면 캡션은
+    // 스크린리더용 alt로만 두고 화면에 텍스트로 중복 표시하지 않는다.
+    const media = slide.image
+      ? `<img src="${slide.image}" alt="${slide.caption}" class="ghost-story-image" />`
+      : `<p style="font-size:1.2rem;line-height:1.7;text-align:center;margin:0.5em 0">${slide.caption}</p>`;
     openModal(`
       <h2>${profile.name}</h2>
       <article class="choice-card">
-        <p style="font-size:1.2rem;line-height:1.7;text-align:center;margin:0.5em 0">${slide.caption}</p>
+        ${media}
       </article>
       <div class="mode-actions" style="margin-top:16px">
         <button type="button" id="ghost-story-next" class="primary-action">${isLast ? "대결 시작" : "다음"}</button>
