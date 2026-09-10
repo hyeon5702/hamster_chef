@@ -10,7 +10,6 @@ const dom = {
   careerButton: document.querySelector("#career-button"),
   leaderboardButton: document.querySelector("#leaderboard-button"),
   tutorialButton: document.querySelector("#tutorial-button"),
-  historyButton: document.querySelector("#history-button"),
   authPanel: document.querySelector("#auth-panel"),
   authStatus: document.querySelector("#auth-status"),
   authBanner: document.querySelector("#auth-banner"),
@@ -59,6 +58,7 @@ const dom = {
   toast: document.querySelector("#toast"),
   juiceLayer: document.querySelector("#juice-layer"),
   multiButton: document.querySelector("#multi-button"),
+  arcadeButton: document.querySelector("#arcade-button"),
   skinButton: document.querySelector("#skin-button"),
   pvpOpponentHud: document.querySelector("#pvp-opponent-hud"),
   pvpOpponentName: document.querySelector("#pvp-opponent-name"),
@@ -1228,8 +1228,8 @@ function setupInput() {
   dom.careerButton.addEventListener("click", openCareerModePreview);
   dom.leaderboardButton.addEventListener("click", () => void openChallengeLeaderboardModal());
   dom.tutorialButton.addEventListener("click", startTutorialGame);
-  dom.historyButton.addEventListener("click", openHistoryModal);
   dom.multiButton.addEventListener("click", openMultiChallengeModal);
+  dom.arcadeButton.addEventListener("click", openGhostSelectModal);
   dom.skinButton?.addEventListener("click", openSkinSelector);
   dom.pvpSabotagePanel.querySelectorAll("[data-sabotage]").forEach((btn) => {
     btn.addEventListener("click", () => sendSabotage(btn.dataset.sabotage));
@@ -2252,8 +2252,8 @@ function refreshStartActions() {
   const hasCareerSave = loggedIn && hasPlayableProgress(getSavedProgress("career"));
   dom.startButton.disabled = !loggedIn;
   dom.leaderboardButton.disabled = !loggedIn;
-  dom.historyButton.disabled = !loggedIn;
   dom.multiButton.disabled = !loggedIn;
+  dom.arcadeButton.disabled = !loggedIn;
   dom.careerButton.disabled = !loggedIn;
   if (dom.continueButton) {
     dom.continueButton.disabled = !loggedIn;
@@ -7064,9 +7064,9 @@ function generateRoomCode() {
 }
 
 function openMultiChallengeModal() {
-  if (!state.authUser) { syncAuthUi("멀티 챌린지는 로그인 후 이용 가능합니다."); return; }
+  if (!state.authUser) { syncAuthUi("PvP 모드는 로그인 후 이용 가능합니다."); return; }
   openModal(`
-    <h2>🐹 멀티 챌린지</h2>
+    <h2>🐹 PvP 모드</h2>
     <p>친구와 방을 만들어 동시에 챌린지를 플레이하세요. 상대방 점수가 실시간으로 보이고, 코인으로 방해를 할 수 있습니다!</p>
     <div class="mode-actions" style="margin-top:16px">
       <button type="button" id="pvp-create-btn" class="primary-action">방 만들기</button>
@@ -7079,10 +7079,6 @@ function openMultiChallengeModal() {
       </label>
       <button type="button" id="pvp-join-confirm" class="primary-action" style="margin-top:8px">참가</button>
     </div>
-    <div class="mode-actions" style="margin-top:12px">
-      <button type="button" id="ghost-duel-btn" class="primary-action secondary-action">🎬 고스트 대결</button>
-    </div>
-    <p style="font-size:0.85em;color:#888;margin-top:6px">상대가 없어도 미리 녹화된 라이벌과 바로 붙어볼 수 있어요.</p>
   `);
   dom.modalContent.querySelector("#pvp-create-btn").addEventListener("click", () => void createPvpRoom());
   dom.modalContent.querySelector("#pvp-join-btn").addEventListener("click", () => {
@@ -7093,7 +7089,6 @@ function openMultiChallengeModal() {
     if (code.length !== 6) { showToast("방 코드는 6자리입니다."); return; }
     void joinPvpRoom(code);
   });
-  dom.modalContent.querySelector("#ghost-duel-btn").addEventListener("click", openGhostSelectModal);
 }
 
 async function createPvpRoom() {
