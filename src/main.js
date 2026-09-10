@@ -205,14 +205,22 @@ const ABANDON_ORDER_SCORE_PENALTY = 12;
 const ABANDON_QUEST_SCORE_PENALTY = 7;
 const LEGACY_SAVE_KEY = "hamster-chef-save-v1";
 const SKIN_SAVE_KEY = "hamster-chef-skin-v1";
+const SKIN_UNLOCK_SAVE_KEY = "hamster-chef-skin-unlocks-v1";
 const SKINS = [
   { id: "default", name: "기본 햄스터",  emoji: "🐹", primary: "#d99b61" },
-  { id: "cat",     name: "고양이 셰프",  emoji: "🐱", primary: "#e8a060" },
-  { id: "rabbit",  name: "토끼 셰프",    emoji: "🐰", primary: "#e8e0d4" },
-  { id: "robot",   name: "로봇 셰프",    emoji: "🤖", primary: "#6090b8" },
-  { id: "devil",   name: "악당 셰프",    emoji: "😈", primary: "#c03030" },
-  { id: "wizard",  name: "마법사 셰프",  emoji: "🧙", primary: "#5c3a8a" },
+  { id: "cat",     name: "고양이 셰프",  emoji: "🐱", primary: "#e8a060", price: 100 },
+  { id: "rabbit",  name: "토끼 셰프",    emoji: "🐰", primary: "#e8e0d4", price: 100 },
+  { id: "robot",   name: "로봇 셰프",    emoji: "🤖", primary: "#6090b8", price: 100 },
+  { id: "devil",   name: "악당 셰프",    emoji: "😈", primary: "#c03030", price: 150 },
+  { id: "wizard",  name: "마법사 셰프",  emoji: "🧙", primary: "#5c3a8a", price: 150 },
 ];
+// 쿠키: 판(챌린지/아케이드/PvP) 완료 시 지급되는 재화. 기본 스킨 외 5종은
+// 쿠키로 해금한다. 완료 보상 25 + 완료 주문당 2 + 실제 PvP 승리 시 15 보너스
+// (고스트는 상대가 진짜 사람이 아니라 승리 보너스 대상에서 뺀다).
+const COOKIE_SAVE_KEY = "hamster-chef-cookies-v1";
+const COOKIE_MATCH_BASE = 25;
+const COOKIE_PER_ORDER = 2;
+const COOKIE_PVP_WIN_BONUS = 15;
 const SHARED_SETTINGS_KEY = "hamster-chef-shared-settings-v1";
 const CHALLENGE_SAVE_KEY = "hamster-chef-challenge-save-v1";
 const CAREER_SAVE_KEY = "hamster-chef-career-save-v1";
@@ -477,6 +485,48 @@ function normalizeSkinId(skinId) {
   return SKINS.some((skin) => skin.id === skinId) ? skinId : "default";
 }
 
+function getUnlockedSkins() {
+  const saved = readLocalJson(SKIN_UNLOCK_SAVE_KEY);
+  const unlocked = new Set(Array.isArray(saved) ? saved : []);
+  unlocked.add("default");
+  return unlocked;
+}
+
+function isSkinUnlocked(skinId) {
+  return !SKINS.find((s) => s.id === skinId)?.price || getUnlockedSkins().has(skinId);
+}
+
+function unlockSkin(skinId) {
+  const unlocked = getUnlockedSkins();
+  unlocked.add(skinId);
+  writeLocalJson(SKIN_UNLOCK_SAVE_KEY, [...unlocked]);
+}
+
+function getCookies() {
+  return Math.max(0, Math.floor(Number(localStorage.getItem(COOKIE_SAVE_KEY)) || 0));
+}
+
+function addCookies(amount) {
+  const next = getCookies() + amount;
+  localStorage.setItem(COOKIE_SAVE_KEY, String(next));
+  return next;
+}
+
+function spendCookies(amount) {
+  const next = getCookies() - amount;
+  localStorage.setItem(COOKIE_SAVE_KEY, String(Math.max(0, next)));
+  return next;
+}
+
+// 챌린지/아케이드/PvP 판이 끝날 때마다 호출한다. 승리 보너스는 진짜 사람과
+// 겨루는 PvP에서만 준다 — 고스트는 상대가 녹화본이라 대상에서 뺀다.
+function awardMatchCookies({ pvpWin = false } = {}) {
+  const orders = state.serviceStats?.completedOrders || 0;
+  const amount = COOKIE_MATCH_BASE + orders * COOKIE_PER_ORDER + (pvpWin ? COOKIE_PVP_WIN_BONUS : 0);
+  addCookies(amount);
+  showToast(`🍪 쿠키 +${amount}`);
+}
+
 const state = {
   running: false,
   gameOver: false,
@@ -549,6 +599,12 @@ const state = {
   pvpBombs: [],          // [{ id, mesh, spark, interactable, expiresAt, fromNickname }]
   pvpInkActive: false,
 };
+
+// 쿠키 제도 도입 전부터 이미 유료 스킨을 장착하고 있던 브라우저를 구제.
+// 안 하면 데이터 초기화 없이도 "장착 중인데 목록에서 잠겨 보이는" 상태가 된다.
+if (state.selectedSkin !== "default" && !getUnlockedSkins().has(state.selectedSkin)) {
+  unlockSkin(state.selectedSkin);
+}
 
 const keys = new Set();
 const clock = new THREE.Clock();
@@ -2841,21 +2897,32 @@ function exitChallengeLeaderboardScreen() {
 
 function openSkinSelector() {
   const cur = normalizeSkinId(state.selectedSkin || "default");
-  const listItems = SKINS.map(s => `
-    <button class="skin-list-card${s.id === cur ? " skin-card-selected" : ""}" data-skin="${s.id}" type="button">
+  const unlocked = getUnlockedSkins();
+  const cookies = getCookies();
+  const listItems = SKINS.map(s => {
+    const owned = !s.price || unlocked.has(s.id);
+    const badge = s.id === cur
+      ? '<span class="skin-card-check">✓</span>'
+      : owned
+        ? ""
+        : `<span class="skin-card-check">🔒${s.price}</span>`;
+    return `
+    <button class="skin-list-card${s.id === cur ? " skin-card-selected" : ""}${owned ? "" : " skin-card-locked"}" data-skin="${s.id}" type="button">
       <span class="skin-card-dot" style="background:${s.primary}"></span>
       <span class="skin-list-name">${s.emoji} ${s.name}</span>
-      ${s.id === cur ? '<span class="skin-card-check">✓</span>' : ""}
-    </button>`).join("");
+      ${badge}
+    </button>`;
+  }).join("");
   openModal(`
-    <h2 style="margin:0 0 12px">캐릭터 스킨</h2>
+    <h2 style="margin:0 0 4px">캐릭터 스킨</h2>
+    <p style="margin:0 0 12px;opacity:.7;font-size:14px">🍪 보유 쿠키 <strong>${cookies}</strong></p>
     <div class="skin-selector-wrap">
       <div class="skin-preview-pane">
         <canvas id="skin-preview-canvas" style="width:200px;height:300px;display:block"></canvas>
       </div>
       <div class="skin-list-pane">${listItems}</div>
     </div>
-    <p style="margin:10px 0 0;opacity:.5;font-size:12px;text-align:center">스킨을 선택하면 바로 적용됩니다.</p>
+    <p style="margin:10px 0 0;opacity:.5;font-size:12px;text-align:center">기본 스킨 외에는 판을 플레이해 모은 쿠키로 해금합니다.</p>
   `);
 
   // mini Three.js preview renderer
@@ -2905,12 +2972,24 @@ function openSkinSelector() {
   dom.modalContent.querySelectorAll("[data-skin]").forEach(btn => {
     btn.addEventListener("mouseenter", () => loadPvSkin(btn.dataset.skin));
     btn.addEventListener("click", () => {
-      const id = normalizeSkinId(btn.dataset.skin);
-      state.selectedSkin = id;
-      localStorage.setItem(SKIN_SAVE_KEY, id);
+      const skin = SKINS.find((s) => s.id === btn.dataset.skin);
+      if (!skin) return;
+      const owned = !skin.price || getUnlockedSkins().has(skin.id);
+      if (!owned) {
+        const cookies = getCookies();
+        if (cookies < skin.price) {
+          showToast(`🍪 쿠키가 부족합니다 (${cookies}/${skin.price})`);
+          return;
+        }
+        spendCookies(skin.price);
+        unlockSkin(skin.id);
+        showToast(`${skin.name} 해금!`);
+      }
+      state.selectedSkin = skin.id;
+      localStorage.setItem(SKIN_SAVE_KEY, skin.id);
       closeModal();
       rebuildPlayer();
-      showToast(`${SKINS.find(s => s.id === id)?.name || id} 선택!`);
+      if (owned) showToast(`${skin.name} 선택!`);
     });
   });
 }
@@ -7038,6 +7117,7 @@ function finishGame(won, copy) {
       return;
     }
     if (state.ghostRecorder) exportGhostRecording();
+    awardMatchCookies();
     if (state.authUser && state.serviceStats?.completedOrders) {
       saveChallengeLeaderboardEntry().then(() => void showChallengeLeaderboardScreen());
     } else {
@@ -8147,6 +8227,7 @@ function showPvpResult() {
   const myName = getProfileDisplayName();
   const won = myScore > oppScore || (myScore === oppScore && myOrders > oppOrders);
   const draw = myScore === oppScore && myOrders === oppOrders;
+  awardMatchCookies({ pvpWin: !isGhostMatch && won });
 
   dom.pvpSabotagePanel.classList.add("hidden");
   dom.pvpOpponentHud.classList.add("hidden");

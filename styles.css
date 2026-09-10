@@ -3554,6 +3554,15 @@ button {
   color: var(--accent, #ef5b4f);
   font-weight: 700;
 }
+.skin-list-card.skin-card-locked .skin-list-name {
+  opacity: 0.55;
+}
+.skin-list-card.skin-card-locked .skin-card-dot {
+  opacity: 0.4;
+}
+.skin-list-card.skin-card-locked .skin-card-check {
+  color: rgba(36, 31, 33, 0.55);
+}
 @media (max-width: 520px) {
   .skin-selector-wrap {
     flex-direction: column;
