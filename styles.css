@@ -688,6 +688,11 @@ button {
   border-radius: 0;
   display: flex;
   flex-direction: column;
+  /* 작은 모달에서 전체화면으로 확 펼쳐지는 느낌 — clip-path를 가운데 작은
+     사각형에서 뷰포트 전체로 넓혀서, width/height는 이미 100%인 채로
+     "확장"만 애니메이션한다. 이 규칙은 .modal-panel 자체가 재사용되는
+     엘리먼트라 다른 모달 → 스토리 모달로 넘어가는 최초 전환 때만 재생된다. */
+  animation: ghost-fullscreen-expand 0.4s cubic-bezier(0.22, 0.9, 0.24, 1);
 }
 
 .modal:has(.ghost-story-image) #modal-content {
@@ -706,6 +711,21 @@ button {
   padding: 0;
   border: 0;
   background: transparent;
+  /* renderSlide()가 매번 innerHTML을 새로 그려서 .choice-card가 슬라이드마다
+     새 엘리먼트로 교체된다 — 그 덕에 이 애니메이션은 슬라이드 넘길 때마다
+     다시 재생돼서 컷이 바뀔 때도 박진감 있게 튄다. */
+  animation: ghost-story-pop 0.32s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+@keyframes ghost-fullscreen-expand {
+  from { clip-path: inset(38% 30% round 24px); }
+  to { clip-path: inset(0% 0% round 0px); }
+}
+
+@keyframes ghost-story-pop {
+  from { transform: scale(0.55); opacity: 0; }
+  70% { transform: scale(1.04); opacity: 1; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .modal:has(.ghost-story-image) .ghost-story-image {
