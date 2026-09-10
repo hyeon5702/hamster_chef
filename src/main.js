@@ -7145,10 +7145,10 @@ async function joinPvpRoom(code) {
 // (updatePvpFrame의 보간, updateOpponentNametag, updatePvpOpponentHud,
 // applyPvpDebuff, showPvpResult, createOpponentMesh)는 실제 상대와 구분하지
 // 못하고 그대로 동작한다. hard는 아직 녹화가 없어 disabled로 잠가둔다.
-// 주의: 녹화본은 녹화 당시의 GAME_SECONDS 길이를 그대로 갖는다. 제한 시간을
-// 480초 → 300초로 줄이면서 기존 8분 녹화본이 잘리게 됐다. 300초 시점 기준으로
-// 쉬움은 완료 주문 0개(유일한 주문이 396초), 보통은 2개(188점)까지만 재생된다.
-// 셋 다 5분 기준으로 다시 녹화해야 한다.
+// 주의: 녹화본은 녹화 당시의 GAME_SECONDS 길이를 그대로 갖는다. 쉬움은 5분
+// 기준으로 재녹화 완료. 보통은 아직 8분짜리 옛 녹화본이라 300초 시점 기준
+// 주문 2개(188점)까지만 재생되지만 동작은 하니 열어둔다. 어려움은 옛 8분
+// 녹화본 기준 주문 0개라 계속 잠가둔다 — 둘 다 5분 기준 재녹화하면 해제.
 const GHOST_PROFILES = [
   {
     id: "easy", difficulty: "쉬움", name: "백존원 - 골목식당의 왕", skin: "rabbit",
@@ -7157,9 +7157,6 @@ const GHOST_PROFILES = [
       { caption: "조보아씨 내려와바", image: "./assets/ghost-story/easy-1.png" },
       { caption: "어어얽어.. 뭐야 이거 빠스 아니여?", image: "./assets/ghost-story/easy-2.png" },
     ],
-    // 8분 녹화본이라 5분 판에서는 주문 0개·0점 — 아무것도 안 하는 상대가 된다.
-    // TODO: 5분 기준으로 재녹화하면 제거
-    disabled: true,
   },
   {
     id: "normal", difficulty: "보통", name: "안섬재 - 모수의 왕", skin: "cat",
