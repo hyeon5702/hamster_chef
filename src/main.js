@@ -7213,38 +7213,23 @@ function openGhostSelectModal() {
 }
 
 function openGhostStoryModal(profile) {
-  let slideIndex = 0;
-
-  const renderSlide = () => {
-    const slide = profile.story[slideIndex];
-    const isLast = slideIndex >= profile.story.length - 1;
-    // 대사가 이미지 안에 이미 박혀 있는 컷이라, 이미지가 있으면 캡션은
-    // 스크린리더용 alt로만 두고 화면에 텍스트로 중복 표시하지 않는다.
-    const media = slide.image
-      ? `<img src="${slide.image}" alt="${slide.caption}" class="ghost-story-image" />`
-      : `<p style="font-size:1.2rem;line-height:1.7;text-align:center;margin:0.5em 0">${slide.caption}</p>`;
-    openModal(`
-      <h2>${profile.name}</h2>
-      <article class="choice-card">
-        ${media}
-      </article>
-      <div class="mode-actions" style="margin-top:16px">
-        <button type="button" id="ghost-story-next" class="primary-action">${isLast ? "대결 시작" : "다음"}</button>
-        <button type="button" id="ghost-story-skip" class="primary-action secondary-action">건너뛰기</button>
-      </div>
-    `);
-    dom.modalContent.querySelector("#ghost-story-next").addEventListener("click", () => {
-      if (isLast) {
-        void startGhostDuel(profile);
-      } else {
-        slideIndex += 1;
-        renderSlide();
-      }
-    });
-    dom.modalContent.querySelector("#ghost-story-skip").addEventListener("click", () => void startGhostDuel(profile));
-  };
-
-  renderSlide();
+  // 슬라이드 두 장 중 하나를 매번 랜덤하게 골라 한 장만 보여준다.
+  const slide = profile.story[Math.floor(Math.random() * profile.story.length)];
+  // 대사가 이미지 안에 이미 박혀 있는 컷이라, 이미지가 있으면 캡션은
+  // 스크린리더용 alt로만 두고 화면에 텍스트로 중복 표시하지 않는다.
+  const media = slide.image
+    ? `<img src="${slide.image}" alt="${slide.caption}" class="ghost-story-image" />`
+    : `<p style="font-size:1.2rem;line-height:1.7;text-align:center;margin:0.5em 0">${slide.caption}</p>`;
+  openModal(`
+    <h2>${profile.name}</h2>
+    <article class="choice-card">
+      ${media}
+    </article>
+    <div class="mode-actions" style="margin-top:16px">
+      <button type="button" id="ghost-story-start" class="primary-action">대결 시작</button>
+    </div>
+  `);
+  dom.modalContent.querySelector("#ghost-story-start").addEventListener("click", () => void startGhostDuel(profile));
 }
 
 async function startGhostDuel(profile) {
