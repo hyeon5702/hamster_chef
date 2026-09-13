@@ -1282,7 +1282,7 @@ function createHelperHamster() {
 }
 
 function setupInput() {
-  dom.startButton.addEventListener("click", startGame);
+  dom.startButton.addEventListener("click", openChallengeModePreview);
   if (dom.continueButton) {
     dom.continueButton.addEventListener("click", continueGame);
   }
@@ -2321,6 +2321,26 @@ function refreshStartActions() {
     dom.continueButton.classList.add("hidden");
   }
   dom.startActions.classList.toggle("hidden", !loggedIn);
+}
+
+function openChallengeModePreview() {
+  if (!state.authUser) {
+    syncAuthUi("챌린지를 시작하려면 먼저 로그인해주세요.");
+    return;
+  }
+  openModal(`
+    <h2>🍽️ 챌린지 모드</h2>
+    <p>제한 시간 5분 동안 들어오는 주문을 최대한 많이 완성해 전역 랭킹에 도전하는 경쟁형 모드입니다. 순위는 완료 주문 수 → 누적 점수 → 최고 단일 요리 점수 → 클리어 시간 순으로 매깁니다.</p>
+    <div class="score-split">
+      <span>제한 시간 5분</span>
+      <span>전역 랭킹 등록</span>
+      <span>🍪 완료 시 쿠키 획득</span>
+    </div>
+    <div class="mode-actions" style="margin-top:16px">
+      <button type="button" id="challenge-start-btn" class="primary-action">챌린지 시작</button>
+    </div>
+  `);
+  dom.modalContent.querySelector("#challenge-start-btn").addEventListener("click", () => void startGame());
 }
 
 function openCareerModePreview() {
@@ -3563,6 +3583,7 @@ async function startGame() {
     syncAuthUi("새 게임을 시작하려면 먼저 회원가입 또는 로그인이 필요합니다.");
     return;
   }
+  closeModal(false, true);
   state.gameMode = "challenge";
   const existingHistory = [...(state.history || [])].slice(-20);
   try {
