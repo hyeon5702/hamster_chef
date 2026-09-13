@@ -6759,6 +6759,18 @@ function showScoreboard(dish, passed) {
 
   dish.clearTime = dish.clearTime ?? getElapsedSeconds();
 
+  // 튜토리얼은 주문이 하나뿐이라 "심사 결과"(가상 라이벌 랭킹) 화면을 보여줄
+  // 이유가 없다 — 통과하면 바로 튜토리얼 완료 화면으로, 실패하면 토스트만
+  // 띄우고 다시 시도하게 한다.
+  if (state.tutorialMode) {
+    if (!passed) {
+      showToast(`${dish.score}점 · ${dish.requiredScore || getRequiredScore()}점 이상 받아야 합니다. 다시 시도해보세요.`);
+      return;
+    }
+    completeServiceOrder(dish, 1);
+    return;
+  }
+
   if (state.gameMode === "challenge") {
     state.scoreboardConclusion = passed ? { dish, playerRank: 1 } : null;
     const buttonText = passed ? "다음 주문 받기" : "다시 도전하기";
