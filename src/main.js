@@ -2330,10 +2330,9 @@ function openChallengeModePreview() {
   }
   openModal(`
     <h2>🍽️ 챌린지 모드</h2>
-    <p>제한 시간 5분 동안 들어오는 주문을 최대한 많이 완성해 전역 랭킹에 도전하는 경쟁형 모드입니다. 순위는 완료 주문 수 → 누적 점수 → 최고 단일 요리 점수 → 클리어 시간 순으로 매깁니다.</p>
+    <p>제한 시간 5분 동안 들어오는 주문을 최대한 많이 완성하고 최고의 쉐프 자리를 노려보세요!</p>
     <div class="score-split">
       <span>제한 시간 5분</span>
-      <span>전역 랭킹 등록</span>
       <span>🍪 완료 시 쿠키 획득</span>
     </div>
     <div class="mode-actions" style="margin-top:16px">
