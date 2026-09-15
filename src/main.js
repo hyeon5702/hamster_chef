@@ -26,6 +26,7 @@ const dom = {
   objective: document.querySelector("#objective"),
   coinCount: document.querySelector("#coin-count"),
   reputationCount: document.querySelector("#reputation-count"),
+  reputationStat: document.querySelector("#reputation-stat"),
   timer: document.querySelector("#timer"),
   mapButton: document.querySelector("#map-button"),
   recipeNoteButton: document.querySelector("#recipe-note-button"),
@@ -5140,6 +5141,26 @@ function judgeSortItem(rejected) {
     showToast(rejected ? "신선한 재료를 버렸어요!" : "상한 재료를 통과시켰어요!");
   }
 
+  advanceSortQueue(quest);
+}
+
+// 시간 초과는 "통과" 버튼을 누른 것과 같이 취급하면 안 된다 — 신선한
+// 재료가 우연히 걸렸을 때 아무것도 안 눌러도 무사통과되는 게 문제였다.
+// 맞고 틀리고를 안 따지고 무조건 목숨 하나를 깎는다.
+function judgeSortTimeout() {
+  const quest = state.currentQuest;
+  if (!quest || quest.id !== "sort" || quest.judging) return;
+  quest.judging = true;
+  cancelAnimationFrame(quest.frameId);
+  quest.frameId = null;
+
+  quest.lives = Math.max(0, quest.lives - 1);
+  showToast("시간 초과! 재료를 놓쳤어요.");
+
+  advanceSortQueue(quest);
+}
+
+function advanceSortQueue(quest) {
   quest.currentIdx++;
   quest.itemTimer = 100;
   quest.judging = false;
@@ -5173,7 +5194,7 @@ function animateSort() {
   if (fill) fill.style.width = `${quest.itemTimer}%`;
 
   if (quest.itemTimer <= 0 && !quest.judging) {
-    judgeSortItem(false);
+    judgeSortTimeout();
     return;
   }
 
@@ -7266,10 +7287,9 @@ async function joinPvpRoom(code) {
 // (updatePvpFrame의 보간, updateOpponentNametag, updatePvpOpponentHud,
 // applyPvpDebuff, showPvpResult, createOpponentMesh)는 실제 상대와 구분하지
 // 못하고 그대로 동작한다. hard는 아직 녹화가 없어 disabled로 잠가둔다.
-// 주의: 녹화본은 녹화 당시의 GAME_SECONDS 길이를 그대로 갖는다. 쉬움은 5분
-// 기준으로 재녹화 완료. 보통은 아직 8분짜리 옛 녹화본이라 300초 시점 기준
-// 주문 2개(188점)까지만 재생되지만 동작은 하니 열어둔다. 어려움은 옛 8분
-// 녹화본 기준 주문 0개라 계속 잠가둔다 — 둘 다 5분 기준 재녹화하면 해제.
+// 주의: 녹화본은 녹화 당시의 GAME_SECONDS 길이를 그대로 갖는다. 쉬움·보통은
+// 5분 기준으로 재녹화 완료. 어려움은 아직 8분짜리 옛 녹화본이라 300초 시점
+// 기준 주문 0개라 계속 잠가둔다 — 5분 기준으로 재녹화하면 해제.
 const GHOST_PROFILES = [
   {
     id: "easy", difficulty: "쉬움", name: "백존원 - 골목식당의 왕", skin: "rabbit",
@@ -8588,6 +8608,8 @@ function updateHud() {
     state.gameMode !== "career" && state.running && !state.gameOver && state.timeLeft <= PANIC_BGM_THRESHOLD,
   );
   dom.mapButton.classList.toggle("hidden", state.gameMode !== "career" || !state.running || state.gameOver);
+  // 챌린지(+아케이드/PvP)에서는 평판이 랭킹/판정 어디에도 안 쓰인다 — 그냥 감춘다.
+  dom.reputationStat?.classList.toggle("hidden", state.gameMode === "challenge");
   dom.objective.textContent = getObjectiveSummary();
 
   if (state.currentQuest) {
