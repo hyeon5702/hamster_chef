@@ -5585,7 +5585,7 @@ function makeChallengeOrder(previousRecipeId = state.orderQueue.at(-1)?.recipe?.
     recipe = unlockedRecipes[(unlockedRecipes.findIndex((item) => item.id === recipe.id) + 1) % unlockedRecipes.length] || recipe;
   }
   const completedOrders = state.serviceStats?.completedOrders || 0;
-  const baseRequiredScore = 76 + Math.min(18, Math.floor(completedOrders / 2) * 2);
+  const baseRequiredScore = 71 + Math.min(18, Math.floor(completedOrders / 2) * 2);
   return {
     recipe,
     requiredScore: applyDailyRequiredScore(recipe, baseRequiredScore),
