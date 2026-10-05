@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap" />
-    <link rel="stylesheet" href="./styles.css?v=sort-timeout-rep-hide-20260915a" />
+    <link rel="stylesheet" href="./styles.css?v=career-excluded-20261005a" />
   </head>
   <body>
     <main id="game-root">
@@ -48,7 +48,8 @@
               <button id="start-button" class="primary-action" type="button">챌린지 시작</button>
               <button id="multi-button" class="primary-action secondary-action" type="button">🐹 PvP 모드</button>
               <button id="arcade-button" class="primary-action secondary-action" type="button">🕹️ 아케이드 모드</button>
-              <button id="career-button" class="primary-action secondary-action" type="button">🌱 성장 모드</button>
+              <!-- 성장 모드: 2026-09-28 결정 기한 미결로 제출본에서 제외 (PLAN.md B 항목). hidden+disabled 제거하면 복구됨 -->
+              <button id="career-button" class="primary-action secondary-action" type="button" hidden disabled>🌱 성장 모드</button>
             </div>
             <div class="start-utility-actions">
               <button id="leaderboard-button" class="util-btn" type="button">챌린지 랭킹</button>
@@ -175,6 +176,6 @@
       <div id="juice-layer" class="juice-layer" aria-hidden="true"></div>
     </main>
 
-    <script type="module" src="./src/main.js?v=sort-timeout-rep-hide-20260915a"></script>
+    <script type="module" src="./src/main.js?v=career-excluded-20261005a"></script>
   </body>
 </html>

@@ -2316,7 +2316,8 @@ function refreshStartActions() {
   dom.leaderboardButton.disabled = !loggedIn;
   dom.multiButton.disabled = !loggedIn;
   dom.arcadeButton.disabled = !loggedIn;
-  dom.careerButton.disabled = !loggedIn;
+  // 성장 모드가 제출본에서 제외된 동안(index.html의 hidden) 로그인해도 다시 켜지지 않게 둔다
+  if (!dom.careerButton.hidden) dom.careerButton.disabled = !loggedIn;
   if (dom.continueButton) {
     dom.continueButton.disabled = !loggedIn;
     dom.continueButton.classList.add("hidden");
