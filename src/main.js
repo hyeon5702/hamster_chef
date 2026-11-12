@@ -7315,7 +7315,6 @@ const GHOST_PROFILES = [
       { caption: "나야 들기름", image: "./assets/ghost-story/hard-1.png" },
       { caption: "자 지나갑니다 화이팅!", image: "./assets/ghost-story/hard-2.png" },
     ],
-    disabled: true, // TODO: assets/ghosts/hard.json 녹화되면 제거
   },
 ];
 
