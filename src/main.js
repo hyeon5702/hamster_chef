@@ -1525,7 +1525,7 @@ async function handleSignup() {
   const password = dom.authPassword.value;
   const nickname = dom.authNickname.value.trim() || "햄스터 셰프";
   if (!email || password.length < 8) {
-    setAuthMessage("회원가입하려면 이메일과 8자 이상의 비밀번호가 필요합니다. 가입 후에는 이메일 인증을 마친 뒤 로그인해야 합니다.", "warning");
+    setAuthMessage("회원가입하려면 이메일과 8자 이상의 비밀번호가 필요합니다.", "warning");
     syncAuthUi();
     return;
   }
