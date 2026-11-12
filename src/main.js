@@ -227,6 +227,21 @@ const CHALLENGE_SAVE_KEY = "hamster-chef-challenge-save-v1";
 const CAREER_SAVE_KEY = "hamster-chef-career-save-v1";
 const MIGRATION_KEY_PREFIX = "hamster-chef-migrated-";
 const ADMIN_CODE = "hamster";
+// 관리자모드는 로컬 개발 환경에서만 연다. 배포본(Vercel)에서는 단축키도 URL
+// 파라미터도 통하지 않는다 — anon key가 공개 저장소에 있어서 패널 하나만 열려도
+// 코인·점수·즉시정산으로 랭킹을 그대로 올릴 수 있기 때문이다.
+// 고스트 녹화도 로컬에서만 가능해진다(PLAN.md F 항목).
+function isAdminAllowedHost() {
+  const { protocol, hostname } = window.location;
+  if (protocol === "file:") return true;
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1" ||
+    hostname.endsWith(".localhost")
+  );
+}
 const BASE_STORAGE_LIMIT = 8;
 const REPUTATION_UNLOCKS = {
   berry: 40,
@@ -643,7 +658,8 @@ let questArrow = null;
 init();
 
 function init() {
-  state.adminEnabled = new URLSearchParams(window.location.search).get("admin") === ADMIN_CODE;
+  state.adminEnabled =
+    isAdminAllowedHost() && new URLSearchParams(window.location.search).get("admin") === ADMIN_CODE;
   loadSettings();
   setupScene();
   setupInput();
@@ -1318,6 +1334,7 @@ function setupInput() {
   window.addEventListener("keydown", (event) => {
     if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
       event.preventDefault();
+      if (!isAdminAllowedHost()) return;
       state.adminEnabled = true;
       openAdminPanel();
       return;
@@ -2866,7 +2883,7 @@ async function openChallengeLeaderboardModal() {
 
   dom.modalContent.innerHTML = `
     <h2>챌린지 랭킹</h2>
-    <p>완료 주문 수가 많은 순으로 정렬되며, 동점이면 누적 점수와 최고 단일 요리 점수로 순위가 갈립니다.</p>
+    <p>누적 점수가 높은 순으로 정렬되며, 동점이면 완료 주문 수와 최고 단일 요리 점수, 클리어 시간으로 순위가 갈립니다.</p>
     ${personalCard}
     <div class="scoreboard-list">${rows}</div>
   `;
@@ -3342,6 +3359,10 @@ function getTutorialIngredientSuggestion(recipe) {
 }
 
 function openAdminPanel() {
+  if (!isAdminAllowedHost()) {
+    state.adminEnabled = false;
+    return;
+  }
   if (!state.adminEnabled) {
     showToast("관리자모드 조건이 맞지 않습니다.");
     return;
@@ -3366,7 +3387,7 @@ function openAdminPanel() {
 
   openModal(`
     <h2>관리자모드</h2>
-    <p>테스트용 패널입니다. URL에 ?admin=${ADMIN_CODE}를 붙이거나 Ctrl+Shift+A로 열 수 있습니다.</p>
+    <p>테스트용 패널입니다. 로컬 개발 환경에서만 열립니다 — URL에 ?admin=${ADMIN_CODE}를 붙이거나 Ctrl+Shift+A.</p>
     <div class="admin-grid">
       <label class="admin-field">
         <span>코인</span>
