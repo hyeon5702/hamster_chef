@@ -501,7 +501,15 @@ function normalizeSkinId(skinId) {
   return SKINS.some((skin) => skin.id === skinId) ? skinId : "default";
 }
 
+// 대회 기간(온라인 투표 ~ 부스) 동안에는 스킨을 전부 열어둔다. 투표자와
+// 부스 방문자는 한두 판만 하고 떠나서 쿠키를 모을 시간이 없는데, 잠긴
+// 스킨은 그 자리에서 할 수 있는 게 없는 선택지라 오히려 인상을 깎는다.
+// 대회가 끝나면 이 상수만 false로 되돌리면 쿠키 해금이 그대로 살아난다.
+// 해금 기록(localStorage)은 건드리지 않으므로 되돌려도 기존 보유분은 남는다.
+const UNLOCK_ALL_SKINS = true;
+
 function getUnlockedSkins() {
+  if (UNLOCK_ALL_SKINS) return new Set(SKINS.map((skin) => skin.id));
   const saved = readLocalJson(SKIN_UNLOCK_SAVE_KEY);
   const unlocked = new Set(Array.isArray(saved) ? saved : []);
   unlocked.add("default");
@@ -2959,14 +2967,14 @@ function openSkinSelector() {
   }).join("");
   openModal(`
     <h2 style="margin:0 0 4px">캐릭터 스킨</h2>
-    <p style="margin:0 0 12px;opacity:.7;font-size:14px">🍪 보유 쿠키 <strong>${cookies}</strong></p>
+    ${UNLOCK_ALL_SKINS ? "" : `<p style="margin:0 0 12px;opacity:.7;font-size:14px">🍪 보유 쿠키 <strong>${cookies}</strong></p>`}
     <div class="skin-selector-wrap">
       <div class="skin-preview-pane">
         <canvas id="skin-preview-canvas" style="width:200px;height:300px;display:block"></canvas>
       </div>
       <div class="skin-list-pane">${listItems}</div>
     </div>
-    <p style="margin:10px 0 0;opacity:.5;font-size:12px;text-align:center">기본 스킨 외에는 판을 플레이해 모은 쿠키로 해금합니다.</p>
+    ${UNLOCK_ALL_SKINS ? "" : `<p style="margin:10px 0 0;opacity:.5;font-size:12px;text-align:center">기본 스킨 외에는 판을 플레이해 모은 쿠키로 해금합니다.</p>`}
   `);
 
   // mini Three.js preview renderer
@@ -5892,7 +5900,8 @@ function openRecipeNote(options = {}) {
       <article class="choice-card recipe-card ${isTarget ? "target-recipe-card" : ""}">
         <h3>${recipe.name}${isTarget ? " · 현재 주문" : ""}</h3>
         <p>${recipe.hint}</p>
-        <p>${recipe.warning}</p>
+        ${makeTasteMeters(recipe)}
+        <p class="taste-note">${recipe.warning}</p>
         ${researchText}
         ${recordText}
       </article>
@@ -5993,8 +6002,12 @@ function openCooking() {
         </button>
       </article>
       <article class="choice-card">
-        <h3>레시피 힌트</h3>
-        <p>${state.gameMode === "career" ? `현재 손님은 ${getTargetRecipe().name}, 목표 ${getRequiredScore()}점 이상입니다.` : `현재 주문은 ${getOrderLabel()} ${getTargetRecipe().name}, 목표 ${getRequiredScore()}점 이상입니다.`}</p>
+        <h3>${getTargetRecipe().name} · 목표 ${getRequiredScore()}점</h3>
+        <p class="taste-note">${getTargetRecipe().hint}</p>
+        ${makeTasteMeters(
+          getTargetRecipe(),
+          state.selectedIngredients.map((id) => INGREDIENTS.find((item) => item.id === id)).filter(Boolean),
+        )}
         <p>손님 취향: ${getCustomerPreference().name} · ${getCustomerPreference().description}</p>
         <p>오늘 이벤트: ${state.dailyEvent.name}</p>
         <div class="mode-actions">
@@ -8706,6 +8719,46 @@ function syncSoundToggle() {
 
 function getReputationTier() {
   return REPUTATION_TIERS.reduce((best, tier) => (state.reputation >= tier.min ? tier : best), REPUTATION_TIERS[0]);
+}
+
+// 레시피가 요구하는 맛을 막대로 보여준다. selected가 있으면 현재 고른 재료의
+// 합계를 함께 채워 "얼마나 모자란지"를 고르는 중에 바로 알 수 있게 한다.
+// 수치를 감추면 플레이어가 시(詩) 같은 hint만 보고 재료를 찍어야 해서,
+// 5분짜리 판에서는 추측이 아니라 그냥 막히는 구간이 된다.
+function makeTasteMeters(recipe, selected = null) {
+  const current = selected ? mergeTraits(selected) : null;
+  const rows = Object.entries(recipe.needs)
+    .map(([trait, target]) => {
+      const have = current ? current[trait] || 0 : 0;
+      const pct = current ? Math.min(100, (have / target) * 100) : 0;
+      const done = current && have >= target;
+      return `
+        <div class="score-row">
+          <span>${TRAIT_LABELS[trait]}</span>
+          <div class="meter"><span style="width:${pct}%"></span></div>
+          <strong>${current ? `${have} / ${target}` : `${target} 이상`}${done ? " ✓" : ""}</strong>
+        </div>
+      `;
+    })
+    .join("");
+
+  const pen = recipe.penalty;
+  const penHave = pen && current ? current[pen.trait] || 0 : 0;
+  const penRow = pen
+    ? `
+      <div class="score-row">
+        <span>${TRAIT_LABELS[pen.trait]} 주의</span>
+        <div class="meter warning-meter"><span style="width:${current ? Math.min(100, (penHave / pen.limit) * 100) : 0}%"></span></div>
+        <strong>${current ? `${penHave} / ${pen.limit}` : `${pen.limit} 이하`}${current && penHave > pen.limit ? " ⚠" : ""}</strong>
+      </div>
+    `
+    : "";
+
+  const bonusRow = recipe.bonus
+    ? `<p class="taste-note">보너스: ${TRAIT_LABELS[recipe.bonus.trait]}이 ${recipe.bonus.threshold} 이상이면 +${recipe.bonus.points}점</p>`
+    : "";
+
+  return `${rows}${penRow}${bonusRow}`;
 }
 
 function formatTraits(traits) {

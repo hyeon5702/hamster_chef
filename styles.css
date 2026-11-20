@@ -3607,3 +3607,11 @@ button {
 .skin-card-selected { border-color: var(--accent, #ef5b4f); background: rgba(239,91,79,0.08); }
 .skin-card-emoji { font-size: 28px; line-height: 1; }
 .skin-card-name  { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; }
+
+/* 레시피 맛 게이지 옆에 붙는 보조 설명 (힌트·경고·보너스). */
+.taste-note {
+  margin: 6px 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.65;
+}
