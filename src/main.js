@@ -370,8 +370,8 @@ const RECIPES = [
   {
     id: "starlight-stew",
     name: "별빛 크림 스튜",
-    hint: "고소하고 부드러운 맛을 중심으로, 마지막에 산뜻함을 살리면 별빛처럼 맑아집니다.",
-    warning: "매운맛이 올라오면 크림 향이 흐려집니다.",
+    hint: "부드러움을 가장 크게 올리고, 고소함과 신선함을 비슷하게 받쳐주세요.",
+    warning: "매움이 올라오면 크림 향이 흐려집니다.",
     needs: { savory: 25, creamy: 35, fresh: 24 },
     penalty: { trait: "spicy", limit: 18, points: 14 },
     bonus: null,
@@ -380,8 +380,8 @@ const RECIPES = [
     id: "forest-mushroom",
     name: "숲속 버섯 플레이트",
     unlockDay: 2,
-    hint: "버섯의 감칠맛을 살리고 고소함과 신선함으로 숲길 같은 여운을 만듭니다.",
-    warning: "달콤함은 살짝 있으면 좋지만 주인공이 되면 안 됩니다.",
+    hint: "감칠맛과 고소함을 같은 무게로 올리고, 신선함으로 숲길 같은 여운을 만듭니다.",
+    warning: "달콤함이 조금 있으면 보너스지만, 주인공이 되면 안 됩니다. 매움은 과하면 감점입니다.",
     needs: { umami: 28, savory: 28, fresh: 24 },
     penalty: { trait: "spicy", limit: 28, points: 6 },
     bonus: { trait: "sweet", threshold: 10, points: 5 },
@@ -390,8 +390,8 @@ const RECIPES = [
     id: "carrot-cream",
     name: "당근 크림볼",
     unlockDay: 4,
-    hint: "당근의 달콤함과 크림의 부드러움을 둥글게 묶고, 신선한 향으로 마무리합니다.",
-    warning: "매운맛은 이 요리와 거의 어울리지 않습니다.",
+    hint: "부드러움과 신선함을 나란히 올리고, 달콤함으로 둥글게 묶어 마무리합니다.",
+    warning: "매움은 조금만 들어와도 점수가 크게 깎입니다.",
     needs: { sweet: 20, creamy: 28, fresh: 28 },
     penalty: { trait: "spicy", limit: 8, points: 20 },
     bonus: null,
@@ -399,8 +399,8 @@ const RECIPES = [
   {
     id: "golden-fondue",
     name: "황금 치즈 퐁듀",
-    hint: "진한 고소함과 부드러움을 크게 살리고, 달콤한 향으로 끝맛을 둥글게 만듭니다.",
-    warning: "신선함이 너무 낮으면 무거운 맛으로 평가됩니다.",
+    hint: "고소함을 가장 진하게 올리고 부드러움을 크게 받친 뒤, 달콤함으로 끝맛을 둥글게 만듭니다.",
+    warning: "신선함이 너무 낮으면 무거운 맛으로 평가되고, 매움은 감점입니다.",
     unlockReputation: REPUTATION_UNLOCKS.goldenFondue,
     unlockDay: 7,
     needs: { savory: 42, creamy: 34, sweet: 22 },
@@ -411,8 +411,8 @@ const RECIPES = [
     id: "volcano-ragu",
     name: "화산 토마토 라구",
     unlockDay: 6,
-    hint: "토마토의 산뜻함 위에 향신 풍미와 강한 매운맛을 분명하게 올리는 뜨거운 메뉴입니다.",
-    warning: "크림이 많아지면 날카로운 화산 같은 인상이 무뎌집니다.",
+    hint: "매움을 가장 높게 올리고, 신선함과 고소함을 그 뒤에 받칩니다.",
+    warning: "부드러움이 많아지면 날카로운 화산 같은 인상이 무뎌집니다.",
     needs: { spicy: 26, fresh: 22, savory: 16 },
     penalty: { trait: "creamy", limit: 20, points: 8 },
     bonus: { trait: "umami", threshold: 12, points: 5 },
@@ -421,8 +421,8 @@ const RECIPES = [
     id: "dew-glaze-salad",
     name: "이슬 베리 글레이즈 샐러드",
     unlockDay: 4,
-    hint: "차가운 이슬처럼 신선한 향과 베리의 달콤함을 얇게 입혀 상큼하게 마무리합니다.",
-    warning: "매운 기운이 올라오면 샐러드의 맑은 인상이 빠르게 깨집니다.",
+    hint: "신선함을 가장 크게 올리고 달콤함을 얹은 뒤, 고소함은 아주 조금만 더합니다.",
+    warning: "매움이 올라오면 샐러드의 맑은 인상이 빠르게 깨집니다.",
     needs: { fresh: 34, sweet: 20, savory: 8 },
     penalty: { trait: "spicy", limit: 10, points: 12 },
     bonus: { trait: "creamy", threshold: 10, points: 4 },
@@ -431,8 +431,8 @@ const RECIPES = [
     id: "greenhouse-soup",
     name: "온실 당근 수프",
     unlockDay: 6,
-    hint: "온실 채소의 단맛과 부드러운 질감을 살리되, 마지막 향은 가볍고 산뜻해야 합니다.",
-    warning: "매운 기운이 들어오면 수프의 포근한 균형이 쉽게 무너집니다.",
+    hint: "신선함과 달콤함을 나란히 올리고, 부드러움으로 포근하게 마무리합니다.",
+    warning: "매움이 들어오면 수프의 포근한 균형이 쉽게 무너집니다.",
     needs: { sweet: 24, fresh: 26, creamy: 22 },
     penalty: { trait: "spicy", limit: 8, points: 10 },
     bonus: { trait: "savory", threshold: 10, points: 4 },
@@ -5900,8 +5900,7 @@ function openRecipeNote(options = {}) {
       <article class="choice-card recipe-card ${isTarget ? "target-recipe-card" : ""}">
         <h3>${recipe.name}${isTarget ? " · 현재 주문" : ""}</h3>
         <p>${recipe.hint}</p>
-        ${makeTasteMeters(recipe)}
-        <p class="taste-note">${recipe.warning}</p>
+        <p>${recipe.warning}</p>
         ${researchText}
         ${recordText}
       </article>
@@ -6002,12 +6001,8 @@ function openCooking() {
         </button>
       </article>
       <article class="choice-card">
-        <h3>${getTargetRecipe().name} · 목표 ${getRequiredScore()}점</h3>
-        <p class="taste-note">${getTargetRecipe().hint}</p>
-        ${makeTasteMeters(
-          getTargetRecipe(),
-          state.selectedIngredients.map((id) => INGREDIENTS.find((item) => item.id === id)).filter(Boolean),
-        )}
+        <h3>레시피 힌트</h3>
+        <p>${state.gameMode === "career" ? `현재 손님은 ${getTargetRecipe().name}, 목표 ${getRequiredScore()}점 이상입니다.` : `현재 주문은 ${getOrderLabel()} ${getTargetRecipe().name}, 목표 ${getRequiredScore()}점 이상입니다.`}</p>
         <p>손님 취향: ${getCustomerPreference().name} · ${getCustomerPreference().description}</p>
         <p>오늘 이벤트: ${state.dailyEvent.name}</p>
         <div class="mode-actions">
@@ -8719,46 +8714,6 @@ function syncSoundToggle() {
 
 function getReputationTier() {
   return REPUTATION_TIERS.reduce((best, tier) => (state.reputation >= tier.min ? tier : best), REPUTATION_TIERS[0]);
-}
-
-// 레시피가 요구하는 맛을 막대로 보여준다. selected가 있으면 현재 고른 재료의
-// 합계를 함께 채워 "얼마나 모자란지"를 고르는 중에 바로 알 수 있게 한다.
-// 수치를 감추면 플레이어가 시(詩) 같은 hint만 보고 재료를 찍어야 해서,
-// 5분짜리 판에서는 추측이 아니라 그냥 막히는 구간이 된다.
-function makeTasteMeters(recipe, selected = null) {
-  const current = selected ? mergeTraits(selected) : null;
-  const rows = Object.entries(recipe.needs)
-    .map(([trait, target]) => {
-      const have = current ? current[trait] || 0 : 0;
-      const pct = current ? Math.min(100, (have / target) * 100) : 0;
-      const done = current && have >= target;
-      return `
-        <div class="score-row">
-          <span>${TRAIT_LABELS[trait]}</span>
-          <div class="meter"><span style="width:${pct}%"></span></div>
-          <strong>${current ? `${have} / ${target}` : `${target} 이상`}${done ? " ✓" : ""}</strong>
-        </div>
-      `;
-    })
-    .join("");
-
-  const pen = recipe.penalty;
-  const penHave = pen && current ? current[pen.trait] || 0 : 0;
-  const penRow = pen
-    ? `
-      <div class="score-row">
-        <span>${TRAIT_LABELS[pen.trait]} 주의</span>
-        <div class="meter warning-meter"><span style="width:${current ? Math.min(100, (penHave / pen.limit) * 100) : 0}%"></span></div>
-        <strong>${current ? `${penHave} / ${pen.limit}` : `${pen.limit} 이하`}${current && penHave > pen.limit ? " ⚠" : ""}</strong>
-      </div>
-    `
-    : "";
-
-  const bonusRow = recipe.bonus
-    ? `<p class="taste-note">보너스: ${TRAIT_LABELS[recipe.bonus.trait]}이 ${recipe.bonus.threshold} 이상이면 +${recipe.bonus.points}점</p>`
-    : "";
-
-  return `${rows}${penRow}${bonusRow}`;
 }
 
 function formatTraits(traits) {
