@@ -403,7 +403,7 @@ const RECIPES = [
     warning: "신선함이 너무 낮으면 무거운 맛으로 평가되고, 매움은 감점입니다.",
     unlockReputation: REPUTATION_UNLOCKS.goldenFondue,
     unlockDay: 7,
-    needs: { savory: 42, creamy: 34, sweet: 22 },
+    needs: { savory: 32, creamy: 28, sweet: 22 },
     penalty: { trait: "spicy", limit: 16, points: 12 },
     bonus: { trait: "fresh", threshold: 18, points: 4 },
   },
